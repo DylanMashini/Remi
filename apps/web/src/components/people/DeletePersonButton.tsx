@@ -3,15 +3,16 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { TrashIcon } from "../icons";
-import { iconButton } from "../ui";
+import { buttonDestructive } from "../ui";
 
 export function DeletePersonButton({ id, name }: { id: string; name: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const first = name.split(" ")[0];
 
   async function onClick() {
-    if (!window.confirm(`Remove ${name}? Their photos and face data are deleted. Past moments stay in the log.`)) return;
+    if (!window.confirm(`Remove ${first}? Recall will stop recognizing ${first} and delete their photos and memories. Past moments stay in the log without a name.`)) return;
     setBusy(true);
     setError(null);
     try {
@@ -21,6 +22,7 @@ export function DeletePersonButton({ id, name }: { id: string; name: string }) {
         setError(data.error ?? `Could not remove (error ${res.status}).`);
         return;
       }
+      router.replace("/people");
       router.refresh();
     } catch {
       setError("Could not reach the server.");
@@ -30,17 +32,11 @@ export function DeletePersonButton({ id, name }: { id: string; name: string }) {
   }
 
   return (
-    <span className="flex items-center gap-2">
-      {error ? <span className="text-sm font-bold text-urgent">{error}</span> : null}
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={busy}
-        className={iconButton}
-        aria-label={`Remove ${name}`}
-        title={`Remove ${name}`}
-      >
+    <span className="flex flex-wrap items-center gap-3">
+      {error ? <span className="text-[15px] font-bold text-urgent">{error}</span> : null}
+      <button type="button" onClick={onClick} disabled={busy} className={buttonDestructive}>
         <TrashIcon size={18} />
+        {busy ? "Removing" : `Remove ${first}`}
       </button>
     </span>
   );
