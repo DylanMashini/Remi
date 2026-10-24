@@ -1,3 +1,7 @@
+# Pinned so `pnpm db:up` keeps using the existing memory-aid-db-1 container and
+# memory-aid_pgdata volume after the repo folder was renamed to HackPSU.
+name: memory-aid
+
 services:
   db:
     image: postgres:18
