@@ -14,27 +14,57 @@ Dementia memory aid built on Meta Ray-Ban glasses. pnpm monorepo:
 - Xcode **26.4+** for the Meta Wearables DAT SDK (26.2 builds the stub module but not the SDK), CocoaPods
 - A physical iPhone (iOS 17.2+) with Meta AI installed and glasses paired, for real glasses work
 
-## Setup
+## Setup (once)
 
 ```sh
-pnpm install          # also runs `prisma generate`
-pnpm db:up            # Postgres in Docker on :5432
-pnpm --filter web db:migrate
+pnpm install                     # also runs `prisma generate`
+[ -f apps/web/.env ] || cp apps/web/.env.example apps/web/.env   # then fill in keys (see below)
+pnpm db:up                       # Postgres 18 in Docker on :5432 (container memory-aid-db-1)
+pnpm --filter web db:migrate     # apply migrations
+pnpm --filter web db:seed        # demo login demo@recall.local / recall-demo (patient "Ruth"); idempotent
 ```
 
-## Run
+Dev uses the local Docker Postgres; no hosted DB needed. Without `BLOB_READ_WRITE_TOKEN`,
+enrollment photos are stored on local disk under `apps/web/.cache/blobs`.
+
+## Run (three processes, plus the phone)
 
 ```sh
-pnpm dev:web          # http://localhost:3000, listens on 0.0.0.0
-pnpm dev:mobile       # Metro for the dev client
+pnpm db:up                                   # 1. Postgres (if not already up)
+pnpm dev:face                                # 2. face sidecar on 127.0.0.1:8001 (first start downloads buffalo_l, ~15 s)
+cd apps/web && pnpm build && pnpm start      # 3. web + API on 0.0.0.0:3000 (production build; use for demo)
 ```
 
-First time (and whenever native code / plugins change), build the dev client:
+`pnpm dev:web` (next dev) works for UI work, but compiles each route on first hit, so never demo on it.
+
+Phone (first time, and whenever app.json, plugins, podspec, or native deps change):
 
 ```sh
 cd apps/mobile
-pnpm ios              # simulator
-pnpm ios:device       # physical iPhone (needs signing team in Xcode)
+pnpm prebuild          # regenerates ios/, pod install fetches the Meta DAT 1.0.1 frameworks
+pnpm ios:device        # build + install the dev client on the iPhone (needs a signing team)
+pnpm start             # Metro for later JS-only changes
+```
+
+In the app, sign in with backend URL `http://<Mac LAN IP>:3000` (`ipconfig getifaddr en0`; use the
+phone hotspot, never venue Wi-Fi). On the Live tab, "No glasses? Start with the phone camera" runs the
+same pipeline on Mock Device Kit.
+
+Caregiver dashboard: `http://<host>:3000/` (Overview, People, Reminders) and `/live` for the projector.
+
+### Keys (`apps/web/.env`)
+
+Everything runs without keys, but: no `ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID` means the phone falls
+back to Apple speech; no `ANTHROPIC_API_KEY` means Ask returns 503; no `ELEVENLABS_API_KEY` or
+`OPENAI_API_KEY` means no speech-to-text; no `RESEND_API_KEY` prints email links to the server log.
+
+### Tests
+
+```sh
+BASE=http://127.0.0.1:3000 SERVER_LOG=<next start log> scripts/e2e.sh   # full slice, fresh user
+BASE=http://127.0.0.1:3000 apps/web/scripts/test-api.sh                  # API smoke (demo user)
+BASE=http://127.0.0.1:3000 SERVER_LOG=<log> apps/web/scripts/test-auth.sh
+pnpm typecheck && (cd apps/mobile && npx expo lint)
 ```
 
 This app uses a **development build**, not Expo Go: Expo Go can't load custom native modules.
