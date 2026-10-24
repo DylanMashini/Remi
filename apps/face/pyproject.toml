@@ -1,0 +1,16 @@
+[project]
+name = "recall-face"
+version = "0.1.0"
+description = "Recall face embedding sidecar (InsightFace buffalo_l)"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "insightface",
+  "onnxruntime",
+  "numpy",
+  "opencv-python-headless",
+]
+
+[tool.uv]
+package = false
