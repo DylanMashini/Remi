@@ -8,6 +8,11 @@ export type GlassesStatus = {
   streaming: boolean;
   audioRoute: AudioRoute;
   mock: boolean;
+  /** Faces are matched on the phone (Core ML) instead of POST /api/frames. */
+  localRecognition: boolean;
+  /** Size of the on-device roster (people / embedded photos); 0 when local recognition is off. */
+  rosterPeople: number;
+  rosterSamples: number;
 };
 
 export type Face = {
@@ -26,7 +31,11 @@ export type FrameResult = {
   speak?: SpeakLine;
   frameWidth: number;
   frameHeight: number;
+  /** True when this result came from on-device recognition (the frame never left the phone). */
+  local?: boolean;
 };
+
+export type RosterSyncResult = { people: number; samples: number };
 
 export type ConfigureOptions = { backendUrl: string; token: string };
 

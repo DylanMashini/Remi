@@ -15,6 +15,10 @@ export type GlassesStatus = {
   streaming: boolean;
   audioRoute: AudioRoute;
   mock: boolean;
+  /** Faces matched on the phone (Core ML) instead of the server. Older builds omit it. */
+  localRecognition?: boolean;
+  rosterPeople?: number;
+  rosterSamples?: number;
 };
 
 export type Face = {
@@ -32,6 +36,7 @@ export type FrameResult = {
   speak?: Speak;
   frameWidth: number;
   frameHeight: number;
+  local?: boolean;
 };
 
 type Events = {
@@ -62,6 +67,8 @@ type NativeGlasses = {
   startListening?: () => Promise<void>;
   stopListening?: () => Promise<{ text: string }>;
   speak?: (speechId: string, text: string) => Promise<void>;
+  setLocalRecognition?: (enabled: boolean) => Promise<GlassesStatus>;
+  syncRoster?: () => Promise<{ people: number; samples: number }>;
   addListener?: (event: string, listener: (payload: never) => void) => Subscription;
 };
 
@@ -116,6 +123,10 @@ export const Glasses = {
   startListening: () => call('startListening')(),
   stopListening: () => call('stopListening')(),
   speak: (speechId: string, text: string) => call('speak')(speechId, text),
+  /** Match faces on the phone with Core ML; frames never leave the device. Needs a build with the model. */
+  setLocalRecognition: (enabled: boolean) => call('setLocalRecognition')(enabled),
+  /** Re-embed everyone's enrollment photos on the phone (local recognition only). */
+  syncRoster: () => call('syncRoster')(),
 };
 
 /** Subscribe to a module event; a no-op if the module or event emitter is missing. */
@@ -152,6 +163,9 @@ export const defaultStatus: GlassesStatus = {
   streaming: false,
   audioRoute: 'other',
   mock: false,
+  localRecognition: false,
+  rosterPeople: 0,
+  rosterSamples: 0,
 };
 
 export function errorMessage(e: unknown): string {
