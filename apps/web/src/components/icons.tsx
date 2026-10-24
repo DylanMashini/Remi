@@ -83,3 +83,45 @@ export const PencilIcon = (p: IconProps) => (
 export const ChevronRightIcon = (p: IconProps) => (
   <Base strokeWidth={2.4} {...p}><path d="M9 6l6 6-6 6" /></Base>
 );
+export const PlusIcon = (p: IconProps) => (
+  <Base strokeWidth={2.4} {...p}><path d="M12 5v14M5 12h14" /></Base>
+);
+export const XIcon = (p: IconProps) => (
+  <Base strokeWidth={2.4} {...p}><path d="M6 6l12 12M18 6L6 18" /></Base>
+);
+export const GlassesIcon = (p: IconProps) => (
+  <Base {...p}><circle cx="6.5" cy="14" r="3.5" /><circle cx="17.5" cy="14" r="3.5" /><path d="M10 14h4M3 14l1.5-5.5A1.5 1.5 0 0 1 6 7.5h1M21 14l-1.5-5.5A1.5 1.5 0 0 0 18 7.5h-1" /></Base>
+);
+export const InsightsIcon = (p: IconProps) => (
+  <Base {...p}><path d="M4 19h16M7 16V10M12 16V5M17 16v-3" /></Base>
+);
+export const SettingsIcon = (p: IconProps) => (
+  <Base {...p}><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.2 2.2M16.9 16.9l2.2 2.2M4.9 19.1l2.2-2.2M16.9 7.1l2.2-2.2" /></Base>
+);
+export const EyeOffIcon = (p: IconProps) => (
+  <Base {...p}><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8" /><path d="M9.9 5.2A10.5 10.5 0 0 1 12 5c5 0 8.5 4 9.5 7-.4 1.1-1.1 2.3-2.1 3.4M6.6 6.6C4.5 8 3.1 10 2.5 12c1 3 4.5 7 9.5 7 1.6 0 3-.4 4.3-1" /></Base>
+);
+export const SunIcon = (p: IconProps) => (
+  <Base {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></Base>
+);
+export const HeartIcon = (p: IconProps) => (
+  <Base {...p}><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" /></Base>
+);
+export const CameraIcon = (p: IconProps) => (
+  <Base {...p}><path d="M4 8h3l2-3h6l2 3h3v12H4z" /><circle cx="12" cy="13" r="3.5" /></Base>
+);
+export const ClockIcon = (p: IconProps) => (
+  <Base {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Base>
+);
+export const PhoneIcon = (p: IconProps) => (
+  <Base {...p}><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18h2" /></Base>
+);
+export const LockIcon = (p: IconProps) => (
+  <Base {...p}><rect x="5" y="11" width="14" height="10" rx="2.5" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></Base>
+);
+export const LogOutIcon = (p: IconProps) => (
+  <Base {...p}><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l5 4-5 4M20 12H9" /></Base>
+);
+export const RepeatIcon = (p: IconProps) => (
+  <Base {...p}><path d="M17 2l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></Base>
+);

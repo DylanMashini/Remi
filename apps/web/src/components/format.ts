@@ -10,8 +10,45 @@ export function formatTime(d: Date | string): string {
   return timeFmt.format(new Date(d));
 }
 
+/** "Saturday, October 24". Sentence case, the same line the phone shows. */
 export function formatDayHeading(d: Date): string {
-  return dayFmt.format(d).toUpperCase();
+  return dayFmt.format(d);
+}
+
+export function formatShortDay(d: Date | string): string {
+  return shortDayFmt.format(new Date(d));
+}
+
+/** "Today at 2:14 PM", "Yesterday at 9:05 AM", "Oct 18 at 4:00 PM". */
+export function formatWhenText(d: Date | string, now: Date): string {
+  const date = new Date(d);
+  const key = dayKeyFmt.format(date);
+  if (key === dayKeyFmt.format(now)) return `Today at ${timeFmt.format(date)}`;
+  const y = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  if (key === dayKeyFmt.format(y)) return `Yesterday at ${timeFmt.format(date)}`;
+  return `${shortDayFmt.format(date)} at ${timeFmt.format(date)}`;
+}
+
+export function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || name;
+}
+
+/** Day key in the demo time zone, e.g. "2026-10-24". */
+export function dayKey(d: Date | string): string {
+  return dayKeyFmt.format(new Date(d));
+}
+
+/** Weekday letter for a day key, e.g. "Sat". */
+export function weekdayShort(d: Date | string): string {
+  return new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: TIME_ZONE }).format(new Date(d));
+}
+
+/** "Good morning" / "Good afternoon" / "Good evening" in the demo time zone. */
+export function greeting(now: Date): string {
+  const h = Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: TIME_ZONE }).format(now));
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
 }
 
 /** "2:14 PM" if the same day as `now`, otherwise "Oct 18, 2:14 PM". */
