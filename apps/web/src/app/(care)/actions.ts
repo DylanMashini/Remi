@@ -2,7 +2,6 @@
 
 import { refresh } from "next/cache";
 import { getCare } from "@/components/care";
-import { invalidateRoster } from "@/lib/match";
 import { cleanCallout, cleanMemoryText, distill } from "@/lib/memories";
 import { prisma } from "@/lib/prisma";
 
@@ -88,7 +87,6 @@ export async function updateCallout(personId: string, _prev: FormState, formData
     data: { name, relationship: relationship || null, notes: notes || null },
   });
   if (count === 0) return { error: "This person is no longer in the roster." };
-  invalidateRoster(patientId);
   refresh();
   return { ok: true };
 }
@@ -104,7 +102,6 @@ export async function addMemory(personId: string, _prev: FormState, formData: Fo
   await prisma.memory.create({
     data: { patientId, personId: person.id, text, calloutText: callout, useInCallout: usable, source: "CAREGIVER", createdById: user.id },
   });
-  invalidateRoster(patientId);
   refresh();
   return { ok: true };
 }
@@ -112,7 +109,6 @@ export async function addMemory(personId: string, _prev: FormState, formData: Fo
 export async function setMemorySpoken(memoryId: string, useInCallout: boolean) {
   const { patientId } = await getCare();
   await prisma.memory.updateMany({ where: { id: memoryId, patientId }, data: { useInCallout } });
-  invalidateRoster(patientId);
   refresh();
 }
 
@@ -124,7 +120,6 @@ export async function updateMemoryCallout(memoryId: string, _prev: FormState, fo
     where: { id: memoryId, patientId },
     data: { calloutText: /[.!?]$/.test(callout) ? callout : `${callout}.` },
   });
-  invalidateRoster(patientId);
   refresh();
   return { ok: true };
 }
@@ -132,6 +127,5 @@ export async function updateMemoryCallout(memoryId: string, _prev: FormState, fo
 export async function deleteMemory(memoryId: string) {
   const { patientId } = await getCare();
   await prisma.memory.deleteMany({ where: { id: memoryId, patientId } });
-  invalidateRoster(patientId);
   refresh();
 }

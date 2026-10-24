@@ -101,7 +101,6 @@ model Person {
   patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
   avatar      File?        @relation("PersonAvatar", fields: [avatarFileId], references: [id], onDelete: SetNull)
   files       File[]       @relation("PersonFiles")
-  faceSamples FaceSample[]
   events      Event[]
   memories    Memory[]
 
@@ -156,23 +155,8 @@ model File {
   patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
   person       Person?      @relation("PersonFiles", fields: [personId], references: [id], onDelete: Cascade)
   avatarOf     Person?      @relation("PersonAvatar")
-  faceSamples  FaceSample[]
 
   @@index([patientId])
-  @@index([personId])
-}
-
-/// One 512-d InsightFace embedding from one enrollment photo.
-model FaceSample {
-  id        String   @id @default(cuid())
-  personId  String
-  fileId    String?
-  embedding Float[]
-  createdAt DateTime @default(now())
-
-  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
-  file   File?  @relation(fields: [fileId], references: [id], onDelete: SetNull)
-
   @@index([personId])
 }
 

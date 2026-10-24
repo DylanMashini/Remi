@@ -139,7 +139,7 @@ async function Person({ params }: { params: Promise<{ id: string }> }) {
                   <LockIcon size={20} />
                 </RowIcon>
               }
-              title={`${person.samples} enrollment ${person.samples === 1 ? "photo" : "photos"}`}
+              title={`${person.photoCount} enrollment ${person.photoCount === 1 ? "photo" : "photos"}`}
               detail={`${capitalize(first)}'s photos stay private to your family and are only used to recognize ${first}. Removing ${first} deletes them.`}
             />
             <div className="px-4 py-4">

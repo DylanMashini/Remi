@@ -6,7 +6,7 @@ Dementia memory aid built on Meta Ray-Ban glasses. pnpm monorepo:
 | --- | --- |
 | `apps/web` | Next.js 16 caregiver portal + backend route handlers (Prisma 7, Postgres 18) |
 | `apps/mobile` | Expo SDK 58 / React Native 0.88 app (Expo Router), iOS dev build |
-| `apps/mobile/modules/glasses` | Local Expo module (Swift) for glasses + photo processing |
+| `apps/mobile/modules/glasses` | Local Expo module (Swift): glasses stream, on-device face recognition (Core ML), audio |
 
 ## Prerequisites
 
@@ -27,13 +27,17 @@ pnpm --filter web db:seed        # demo login demo@recall.local / recall-demo (p
 Dev uses the local Docker Postgres; no hosted DB needed. Without `BLOB_READ_WRITE_TOKEN`,
 enrollment photos are stored on local disk under `apps/web/.cache/blobs`.
 
-## Run (three processes, plus the phone)
+## Run (two processes, plus the phone)
 
 ```sh
 pnpm db:up                                   # 1. Postgres (if not already up)
-pnpm dev:face                                # 2. face sidecar on 127.0.0.1:8001 (first start downloads buffalo_l, ~15 s)
-cd apps/web && pnpm build && pnpm start      # 3. web + API on 0.0.0.0:3000 (production build; use for demo)
+cd apps/web && pnpm build && pnpm start      # 2. web + API on 0.0.0.0:3000 (production build; use for demo)
 ```
+
+Face recognition runs on the phone: the Swift module embeds faces with a 6.6 MB Core ML model
+(`apps/mobile/modules/glasses/scripts/README.md`) and matches them against the family roster it
+builds from the enrollment photos. Camera frames never leave the phone; the server only receives
+`{personId | null, score}` on `POST /api/recognitions`, logs the moment, and returns the words to say.
 
 `pnpm dev:web` (next dev) works for UI work, but compiles each route on first hit, so never demo on it.
 
@@ -84,7 +88,7 @@ To edit Swift with autocomplete, open `apps/mobile/ios/MemoryAid.xcworkspace` in
 
 `plugins/withMetaWearables.js` writes the Info.plist keys the Meta SDK needs (`MWDAT`, Bluetooth, external accessory, background modes). Pass real `appId`/`clientToken`/`teamId` in `app.json` for non-developer-mode use. Never edit `ios/` by hand. Change config through `app.json` or plugins.
 
-For sending photos to the backend, Next route handlers can read raw `Content-Type: image/jpeg` bodies with `await req.arrayBuffer()`, so Swift can upload bytes directly with `URLSession` instead of passing them through JS.
+Enrollment photos and audio go from Swift to the backend directly with `URLSession` (multipart or raw bodies read with `await req.arrayBuffer()`), never through JS. Glasses frames are not uploaded at all.
 
 For the demo, run the production server (`pnpm --filter web build && pnpm --filter web start`). `next dev` compiles each route on first request, which is too slow for live recognition.
 

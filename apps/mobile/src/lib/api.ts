@@ -10,7 +10,8 @@ export type Person = {
   /** Full enrollment photo, for the Remember portrait. */
   photoUrl: string | null;
   photoUrls?: string[];
-  samples: number;
+  /** Number of enrollment photos. */
+  photoCount: number;
   lastSeenAt: string | null;
   /** The exact sentence the glasses say when this person walks up. */
   line: string;

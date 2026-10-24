@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { logEvent } from "@/lib/events";
-import { invalidateRoster } from "@/lib/match";
 import { cleanCallout, cleanMemoryText, distill, serializeMemory } from "@/lib/memories";
 import type { MemorySource } from "@/generated/prisma/client";
 import { errorResponse, HttpError, readJson } from "../../../_lib/http";
@@ -37,7 +36,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const memory = await prisma.memory.create({
       data: { patientId, personId: person.id, text, calloutText, useInCallout, source, createdById: user.id },
     });
-    invalidateRoster(patientId);
     await logEvent(patientId, "PRACTICE", calloutText, {
       personId: person.id,
       data: { kind: "memory", memoryId: memory.id, source, useInCallout },

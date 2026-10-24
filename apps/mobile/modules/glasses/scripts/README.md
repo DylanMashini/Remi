@@ -2,17 +2,18 @@
 
 `ios/Models/FaceEmbedder.mlmodelc` is InsightFace's **buffalo_sc** recognizer (`w600k_mbf.onnx`,
 MobileFaceNet trained on WebFace600K) converted to a Core ML program with fp16 weights (6.6 MB
-compiled). It is what `FaceRecognizer.swift` runs on the phone when local recognition is on.
+compiled). It is what `FaceRecognizer.swift` runs on the phone: all face recognition happens on-device.
 
 - Source: https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_sc.zip
   (`w600k_mbf.onnx`, 13.6 MB fp32).
-- License: InsightFace model-zoo weights are released for **non-commercial research use** (same
-  terms as the `buffalo_l` pack the Python sidecar already uses). Code in this repo is ours.
+- License: InsightFace model-zoo weights are released for **non-commercial research use**. Code in
+  this repo is ours. Swap for a permissive model (e.g. OpenCV Zoo SFace, Apache-2.0) before any
+  real deployment.
 - Contract: aligned 112x112 RGB crop (ArcFace 5-point template, `(x-127.5)/127.5`, done by the
   Core ML `ImageType` scale/bias), output 512-d, L2-normalized by the caller. The compiled model
   matches onnxruntime to cosine 0.99998 on the same input.
-- Scores on `apps/face/testdata` (InsightFace alignment): same person 0.73, different person
-  -0.06 / 0.03, so the server's 0.5 threshold carries over.
+- Scores on `scripts/testdata` (repo root; InsightFace alignment): same person 0.73, different
+  person -0.06 / 0.03, so the 0.5 match threshold has a wide margin.
 
 Face detection comes from Apple Vision (`VNDetectFaceRectanglesRequest`), so no detector model
 ships with the app. There is no landmark alignment: a square crop of 1.3x the face box, shifted
@@ -46,6 +47,6 @@ when the app is launched with `RECALL_FACE_SELFTEST=<dir>` and reports cosine ag
 ```sh
 uv pip install --python /tmp/facevenv/bin/python insightface opencv-python-headless
 mkdir -p /tmp/isf/models && cp -R /tmp/buffalo_sc /tmp/isf/models/buffalo_sc
-/tmp/facevenv/bin/python reference_embeddings.py --root /tmp/isf --out /tmp/ref ../../../../face/testdata/*.jpg
+/tmp/facevenv/bin/python reference_embeddings.py --root /tmp/isf --out /tmp/ref ../../../../../scripts/testdata/*.jpg
 SIMCTL_CHILD_RECALL_FACE_SELFTEST=/tmp/ref xcrun simctl launch --console booted com.dylanmashini.memoryaid
 ```

@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Recall end-to-end test: fresh caregiver signup through recognition, memory log, SSE, files, and
-# password reset. Runs against a live server (ideally `next start`) plus the face sidecar.
+# Recall end-to-end test: fresh caregiver signup through enrollment, on-device recognition events,
+# memory log, SSE, files, and password reset. Runs against a live server (ideally `next start`).
+# Face matching happens on the phone, so recognition is exercised by posting decisions to
+# /api/recognitions the way the Swift module does.
 #
 # Usage: BASE=http://127.0.0.1:3000 SERVER_LOG=/path/to/next-start.log scripts/e2e.sh
 #   SERVER_LOG: the server's stdout. Without RESEND_API_KEY the reset link is printed there.
-# Needs: jq, curl, docker (memory-aid-db-1, for File-row checks), apps/face/testdata photos.
+# Needs: jq, curl, docker (memory-aid-db-1, for File-row checks), scripts/testdata photos.
 # Key-dependent steps (ElevenLabs, Anthropic, Blob) run only when the key is set in apps/web/.env.
 set -uo pipefail
 
@@ -12,7 +14,7 @@ BASE="${BASE:-http://127.0.0.1:3000}"
 SERVER_LOG="${SERVER_LOG:-}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENVF="$ROOT/apps/web/.env"
-TESTDATA="$ROOT/apps/face/testdata"
+TESTDATA="$ROOT/scripts/testdata"
 DB_CONTAINER="${DB_CONTAINER:-memory-aid-db-1}"
 TMP="$(mktemp -d)"
 STREAM_PID=""
@@ -30,8 +32,6 @@ sql() { docker exec "$DB_CONTAINER" psql -U memoryaid -d memoryaid -tAc "$1" 2>/
 json() { jq -nc "$@"; }
 
 echo "== Recall e2e against $BASE"
-code=$(curl -s -o /dev/null -w '%{http_code}' "${FACE_URL:-http://127.0.0.1:8001}/health")
-[ "$code" = 200 ] && ok "face sidecar /health" || { bad "face sidecar not reachable ($code); run pnpm dev:face"; exit 1; }
 
 # 1. Signup a fresh caregiver (gets its own empty patient, so the roster is isolated)
 EMAIL="e2e-$(date +%s)-$RANDOM@recall.local"
@@ -49,15 +49,17 @@ AUTH=(-H "authorization: Bearer $TOKEN")
 PATIENT=$(curl -s "${AUTH[@]}" "$BASE/api/auth/me" | jq -r '.patient.id // empty')
 [ -n "$PATIENT" ] && ok "GET /api/auth/me -> patient $PATIENT" || bad "GET /api/auth/me"
 
-# 3. Enroll a person with 2 test photos
+# 3. Enroll a person with 2 test photos (plus the face boxes the phone would send)
 cp "$TESTDATA/obama_a.jpg" "$TMP/enroll1.jpg"
 sips -f horizontal "$TESTDATA/obama_a.jpg" --out "$TMP/enroll2.jpg" >/dev/null 2>&1 || cp "$TESTDATA/obama_a.jpg" "$TMP/enroll2.jpg"
 resp=$(curl -s -w '\n%{http_code}' "${AUTH[@]}" -F name="Barack" -F relationship="old friend" \
-  -F notes="You met him in Chicago." -F photos=@"$TMP/enroll1.jpg;type=image/jpeg" -F photos=@"$TMP/enroll2.jpg;type=image/jpeg" "$BASE/api/people")
+  -F notes="You met him in Chicago." -F faces='[[120,80,200,200],[120,80,200,200]]' \
+  -F photos=@"$TMP/enroll1.jpg;type=image/jpeg" -F photos=@"$TMP/enroll2.jpg;type=image/jpeg" "$BASE/api/people")
 code=$(echo "$resp" | tail -1); body=$(echo "$resp" | sed '$d')
 PID=$(echo "$body" | jq -r '.person.id // empty')
-[ "$code" = 201 ] && [ -n "$PID" ] && [ "$(echo "$body" | jq .samples)" = 2 ] \
-  && ok "POST /api/people -> 201, 2 samples" || { bad "POST /api/people -> $code $body"; exit 1; }
+[ "$code" = 201 ] && [ -n "$PID" ] && [ "$(echo "$body" | jq .person.photoCount)" = 2 ] \
+  && ok "POST /api/people -> 201, 2 photos" || { bad "POST /api/people -> $code $body"; exit 1; }
+[ "$(echo "$body" | jq '.person.photoUrls | length')" = 2 ] && ok "201 body lists photoUrls for the phone roster" || bad "photoUrls: $(echo "$body" | jq -c .person.photoUrls)"
 
 # 3b. File rows + blobs exist
 FILES=$(sql "select count(*) from \"File\" where \"personId\"='$PID'")
@@ -78,12 +80,15 @@ AVATAR=$(curl -s "${AUTH[@]}" "$BASE/api/people" | jq -r --arg id "$PID" '.peopl
 ctype=$(curl -s -o /dev/null -w '%{content_type} %{http_code}' "${AUTH[@]}" "$BASE$AVATAR")
 [ "$ctype" = "image/jpeg 200" ] && ok "authed avatar fetch -> image/jpeg 200" || bad "authed avatar fetch -> $ctype"
 
-# 4. Frame with a third (different) photo -> match + speechId
-resp=$(curl -s "${AUTH[@]}" -H 'content-type: image/jpeg' --data-binary @"$TESTDATA/obama_b.jpg" "$BASE/api/frames")
-echo "        frame: $(echo "$resp" | jq -c '{faces: [.faces[] | {personId, name, score}], speak}')"
-[ "$(echo "$resp" | jq -r '.faces[0].personId')" = "$PID" ] && ok "frame matched person (score $(echo "$resp" | jq '.faces[0].score'))" || bad "frame did not match: $resp"
+# 4. The phone recognized him (decision only, no image) -> spoken line + speechId
+resp=$(curl -s -w '\n%{http_code}' "${AUTH[@]}" -H 'content-type: application/json' \
+  -d "$(json --arg id "$PID" '{events:[{personId:$id,score:0.71,box:[40,60,180,180]}]}')" "$BASE/api/recognitions")
+code=$(echo "$resp" | tail -1); resp=$(echo "$resp" | sed '$d')
+echo "        recognition: $(echo "$resp" | jq -c .)"
+[ "$code" = 200 ] && ok "POST /api/recognitions -> 200" || bad "POST /api/recognitions -> $code $resp"
 SPEECH=$(echo "$resp" | jq -r '.speak.speechId // empty')
-[ -n "$SPEECH" ] && ok "speak: \"$(echo "$resp" | jq -r .speak.text)\"" || bad "no speechId on first sighting"
+[ "$(echo "$resp" | jq -r '.speak.text // empty')" = "This is Barack, your old friend. You met him in Chicago." ] && [ -n "$SPEECH" ] \
+  && ok "speak: \"$(echo "$resp" | jq -r .speak.text)\"" || bad "speak line: $resp"
 
 # 5. Speech audio
 if has_key ELEVENLABS_API_KEY && has_key ELEVENLABS_VOICE_ID; then
@@ -115,11 +120,11 @@ miss=""; for t in $WANT; do echo ",$TYPES," | grep -q ",$t," || miss="$miss $t";
 PN=$(curl -s "${AUTH[@]}" "$BASE/api/events" | jq -r '[.events[] | select(.type=="RECOGNITION")][0].personName')
 [ "$PN" = "Barack" ] && ok "RECOGNITION event carries personName" || bad "RECOGNITION personName = $PN"
 
-# 8. SSE stream delivers a new event within 5 s (trigger: unknown face -> UNKNOWN + SPOKEN)
+# 8. SSE stream delivers a new event within 5 s (trigger: the phone saw a stranger -> UNKNOWN + SPOKEN)
 curl -s -N --max-time 6 "${AUTH[@]}" "$BASE/api/stream" > "$TMP/sse.txt" &
 STREAM_PID=$!; disown "$STREAM_PID" 2>/dev/null
 sleep 1.5
-curl -s -o /dev/null "${AUTH[@]}" -H 'content-type: image/jpeg' --data-binary @"$TESTDATA/biden.jpg" "$BASE/api/frames"
+curl -s -o /dev/null "${AUTH[@]}" -H 'content-type: application/json' -d '{"events":[{"personId":null,"score":0.12,"box":[10,10,100,100],"count":1}]}' "$BASE/api/recognitions"
 for _ in 1 2 3 4 5 6 7 8 9 10; do grep -q '^event: event' "$TMP/sse.txt" && break; sleep 0.5; done
 if grep -q '^event: event' "$TMP/sse.txt"; then
   ok "SSE delivered: $(grep -m1 '^data:' "$TMP/sse.txt" | sed 's/^data: //' | jq -r '.type + " " + .text')"
@@ -130,7 +135,7 @@ kill "$STREAM_PID" 2>/dev/null; STREAM_PID=""
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE$AVATAR")
 [ "$code" = 401 ] && ok "logged-out GET $AVATAR -> 401" || bad "logged-out file fetch -> $code"
 
-# 10. DELETE person removes files, blobs, samples; keeps events with personId nulled
+# 10. DELETE person removes files and blobs; keeps events with personId nulled
 code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "${AUTH[@]}" "$BASE/api/people/$PID")
 [ "$code" = 204 ] && ok "DELETE /api/people -> 204" || bad "DELETE /api/people -> $code"
 code=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$BASE$AVATAR")
@@ -143,8 +148,9 @@ if [ -n "$FILES" ]; then
     [ "$remain" = 0 ] && ok "local blob files deleted" || bad "$remain local blob files remain"
   fi
 fi
-resp=$(curl -s "${AUTH[@]}" -H 'content-type: image/jpeg' --data-binary @"$TESTDATA/obama_b.jpg" "$BASE/api/frames")
-[ "$(echo "$resp" | jq -r '.faces[0] | has("personId")')" = false ] && ok "deleted person no longer recognized" || bad "deleted person still matched: $resp"
+code=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" -H 'content-type: application/json' \
+  -d "$(json --arg id "$PID" '{events:[{personId:$id,score:0.9}]}')" "$BASE/api/recognitions")
+[ "$code" = 404 ] && ok "recognition of a deleted person -> 404" || bad "recognition of deleted person -> $code"
 
 # 11. Forgot / reset
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/auth/forgot" -H 'content-type: application/json' -d "$(json --arg e "$EMAIL" '{email:$e}')")

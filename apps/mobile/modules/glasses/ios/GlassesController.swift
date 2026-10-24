@@ -16,7 +16,6 @@ final class GlassesController {
 
   let speaker = Speaker()
   let audio = AudioCapture()
-  let uploader = FrameUploader()
 
   private(set) var registration: RegistrationState = .unavailable
   private var sessionState: DeviceSessionState?
@@ -100,21 +99,15 @@ final class GlassesController {
       }
     }
 
-    uploader.onResult = { [weak self] obj, w, h in
-      Task { @MainActor in self?.handleFrameResult(obj, width: w, height: h) }
-    }
-    uploader.onError = { [weak self] msg in
-      Task { @MainActor in self?.emitError(msg) }
-    }
-
-    // On-device path: same result shape, same speaker; the frame never leaves the phone.
+    // Faces are recognized on the phone (Core ML); the frame never leaves the device.
+    do { try FaceRecognizer.shared.load() } catch { emitError(error.localizedDescription) }
     let local = LocalRecognition.shared
     local.onResult = { [weak self] obj, w, h in
-      Task { @MainActor in self?.handleFrameResult(obj, width: w, height: h, speakNow: false) }
+      Task { @MainActor in self?.handleFrameResult(obj, width: w, height: h) }
     }
     local.onSpeak = { [weak self] speechId, text in
       Task { @MainActor in
-        NSLog("[Glasses] speak (local): \(text)")
+        NSLog("[Glasses] speak: \(text)")
         self?.speaker.enqueue(speechId: speechId, text: text)
       }
     }
@@ -123,15 +116,7 @@ final class GlassesController {
     }
   }
 
-  // MARK: Local recognition
-
-  var localRecognition: Bool { LocalRecognition.shared.enabled }
-
-  func setLocalRecognition(_ on: Bool) async throws {
-    try await LocalRecognition.shared.setEnabled(on)
-    NSLog("[Glasses] local recognition \(on ? "on" : "off")")
-    emitStatus()
-  }
+  // MARK: Roster
 
   /// Re-embeds the roster from the server's enrollment photos. Call after enrolling or editing people.
   func syncRoster() async throws -> [String: Any] {
@@ -141,7 +126,6 @@ final class GlassesController {
   }
 
   private func syncRosterInBackground() {
-    guard localRecognition else { return }
     Task { @MainActor [weak self] in
       do { _ = try await self?.syncRoster() } catch { self?.emitError("Roster sync failed: \(error.localizedDescription)") }
     }
@@ -178,7 +162,6 @@ final class GlassesController {
       "streaming": streaming,
       "audioRoute": audioRoute,
       "mock": mock,
-      "localRecognition": localRecognition,
       "rosterPeople": roster.people,
       "rosterSamples": roster.samples,
     ]
@@ -267,7 +250,7 @@ final class GlassesController {
     audioEnabledInStream = mic
     attachStreamListeners(camera.stream, audio: mic)
 
-    uploader.enabled = true
+    LocalRecognition.shared.setActive(true)
     audio.setAmbient(true)
     syncRosterInBackground()
     camera.stream.start()
@@ -283,7 +266,7 @@ final class GlassesController {
   }
 
   func stopStream() async {
-    uploader.enabled = false
+    LocalRecognition.shared.setActive(false)
     audio.stopAll()
     await streamTokens.cancelAll()
     camera?.stop()
@@ -389,7 +372,7 @@ final class GlassesController {
       // Hinges closed / BT dropped: the session is terminal. Next startStream creates a new one.
       camera = nil
       streaming = false
-      uploader.enabled = false
+      LocalRecognition.shared.setActive(false)
       audio.stopAll()
       streamTokens.clear()
       sessionTokens.clear()
@@ -409,7 +392,7 @@ final class GlassesController {
           self.streaming = now
           self.emitStatus()
         }
-        if state == .stopped { self.uploader.enabled = false } else if now { self.uploader.enabled = true }
+        if state == .stopped { LocalRecognition.shared.setActive(false) } else if now { LocalRecognition.shared.setActive(true) }
       }
     }.store(in: streamTokens)
 
@@ -448,31 +431,21 @@ final class GlassesController {
       defer { self.frameLock.lock(); self.decoding = false; self.frameLock.unlock() }
       guard let image = frame.makeUIImage() else { return }
       FrameHub.shared.publish(image)
-      if LocalRecognition.shared.enabled {
-        // Matched on the phone; the JPEG never leaves the device.
-        LocalRecognition.shared.offer(image)
-      } else {
-        MainActor.assumeIsolatedOrHop { self.uploader.offer(image) }
-      }
+      // Matched on the phone; the frame never leaves the device.
+      LocalRecognition.shared.offer(image)
     }
   }
 
-  /// `speakNow` is false for local results: the line is spoken once /api/recognitions returns the
+  /// Boxes and the line for the UI. The line itself is spoken once /api/recognitions returns the
   /// canonical text (or the local fallback), via LocalRecognition.onSpeak.
-  private func handleFrameResult(_ obj: [String: Any], width: Int, height: Int, speakNow: Bool = true) {
+  private func handleFrameResult(_ obj: [String: Any], width: Int, height: Int) {
     var body: [String: Any?] = [
       "faces": obj["faces"] as? [[String: Any]] ?? [],
       "frameWidth": width,
       "frameHeight": height,
-      "local": !speakNow,
     ]
     if let speak = obj["speak"] as? [String: Any], let text = speak["text"] as? String, !text.isEmpty {
-      let speechId = speak["speechId"] as? String
-      body["speak"] = ["speechId": speechId ?? "", "text": text]
-      if speakNow {
-        NSLog("[Glasses] speak (frame): \(text)")
-        speaker.enqueue(speechId: speechId, text: text)
-      }
+      body["speak"] = ["speechId": speak["speechId"] as? String ?? "", "text": text]
     }
     emit("onFrameResult", body)
   }

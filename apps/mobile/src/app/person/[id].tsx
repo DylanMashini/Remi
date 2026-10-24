@@ -178,7 +178,7 @@ export default function PersonScreen() {
                 value={person.lastRememberedAt ? agoText(person.lastRememberedAt, now) : 'Not yet'}
                 valueTone="mute"
               />
-              <Row icon="camera" iconTone="sand" title="Photos" value={`${person.samples}`} valueTone="mute" />
+              <Row icon="camera" iconTone="sand" title="Photos" value={`${person.photoCount}`} valueTone="mute" />
             </Group>
 
             <Button

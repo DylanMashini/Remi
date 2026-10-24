@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Smoke test for the Remember feature (memories, callouts, visits, web pages). Needs the face sidecar.
+# Smoke test for the Remember feature (memories, callouts, visits, web pages). Needs a running server.
 # Usage: BASE=http://127.0.0.1:3000 scripts/remember-smoke.sh
 set -uo pipefail
 BASE="${BASE:-http://127.0.0.1:3000}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TESTDATA="$ROOT/apps/face/testdata"
+TESTDATA="$ROOT/scripts/testdata"
 PASS=0; FAIL=0
 ok()  { echo "  PASS  $1"; PASS=$((PASS+1)); }
 bad() { echo "  FAIL  $1"; FAIL=$((FAIL+1)); }
@@ -77,7 +77,7 @@ LINE3=$(curl -s "${AUTH[@]}" "$BASE/api/people/$PID" | jq -r .person.line)
 resp=$(curl -s "${AUTH[@]}" -X PATCH "$BASE/api/memories/$MID" -H 'content-type: application/json' -d '{"calloutText":"He taught you to make coffee","useInCallout":true}')
 [ "$(echo "$resp" | jq -r .memory.calloutText)" = "He taught you to make coffee." ] && ok "edit callout adds period" || bad "edit callout: $resp"
 LINE4=$(curl -s "${AUTH[@]}" "$BASE/api/people/$PID" | jq -r .person.line)
-[ "$LINE4" = "This is Barack, your neighbor. He waves every morning. He taught you to make coffee." ] && ok "frames line = $LINE4" || bad "line: $LINE4"
+[ "$LINE4" = "This is Barack, your neighbor. He waves every morning. He taught you to make coffee." ] && ok "spoken line = $LINE4" || bad "line: $LINE4"
 
 # Detail: visits + memories + list count
 detail=$(curl -s "${AUTH[@]}" "$BASE/api/people/$PID")

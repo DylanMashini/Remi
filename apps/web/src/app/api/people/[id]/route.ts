@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
-import { clearDebounce, invalidateRoster } from "@/lib/match";
 import { getPerson } from "@/lib/people";
 import { deleteBlobs } from "@/lib/storage";
 import { errorResponse, HttpError, readJson } from "../../_lib/http";
@@ -50,7 +49,6 @@ export async function PATCH(req: Request, { params }: Params) {
         ...(notes !== undefined ? { notes } : {}),
       },
     });
-    invalidateRoster(patientId);
     const person = await getPerson(patientId, id);
     return Response.json({ person });
   } catch (error) {
@@ -58,7 +56,7 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 }
 
-/** Deletes a person, their photos (blobs + rows), samples and memories. Events stay with personId nulled. */
+/** Deletes a person, their photos (blobs + rows) and memories. Events stay with personId nulled. */
 export async function DELETE(req: Request, { params }: Params) {
   try {
     const { patientId } = await requireSession(req);
@@ -69,10 +67,8 @@ export async function DELETE(req: Request, { params }: Params) {
     });
     if (!person) throw new HttpError(404, "Person not found");
     await deleteBlobs(person.files);
-    // Cascades: File rows (personId), FaceSamples, Memories; Event.personId is SetNull.
+    // Cascades: File rows (personId), Memories; Event.personId is SetNull.
     await prisma.person.delete({ where: { id: person.id } });
-    invalidateRoster(patientId);
-    clearDebounce(patientId, person.id);
     return new Response(null, { status: 204 });
   } catch (error) {
     return errorResponse(error);

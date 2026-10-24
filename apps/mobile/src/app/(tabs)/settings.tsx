@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button, Group, Notice, Row, Screen, ScreenHeader } from '@/components/ui';
 import { Gutter, Spacing } from '@/constants/theme';
@@ -52,18 +52,11 @@ export default function SettingsScreen() {
 
   const caregiver = account?.role !== 'WEARER';
 
-  const localSupported = glassesHas('setLocalRecognition');
-  const local = status.localRecognition === true;
-  const toggleLocal = (on: boolean) =>
-    run(
-      'local',
-      async () => setStatus(await Glasses.setLocalRecognition(on)),
-      on ? 'Faces are now recognized on this phone. Camera frames stay on the device.' : 'Faces are recognized by the server again.'
-    );
+  const canSync = glassesHas('syncRoster');
   const rosterText =
     status.rosterPeople && status.rosterPeople > 0
-      ? `${status.rosterPeople} ${status.rosterPeople === 1 ? 'person' : 'people'}, ${status.rosterSamples ?? 0} photos ready`
-      : 'No one loaded yet';
+      ? `${status.rosterPeople} ${status.rosterPeople === 1 ? 'person' : 'people'}, ${status.rosterSamples ?? 0} photos ready on this phone`
+      : 'People load onto the phone when the glasses start';
 
   return (
     <Screen edges={['top']}>
@@ -116,52 +109,34 @@ export default function SettingsScreen() {
 
         <Group
           title="Recognition"
-          footer={
-            localSupported
-              ? 'On: each camera frame is matched on this phone with a small face model and discarded; only who was seen is sent to the memory log. Off: frames go to the Recall server for matching.'
-              : 'This build does not include the on-device face model. Faces are matched by the Recall server.'
-          }>
-          <Row
-            icon="iphone"
-            iconTone="harbor"
-            title="Recognize faces on this phone"
-            detail={local ? rosterText : 'Frames are matched by the server'}
-            trailing={
-              <Switch
-                value={local}
-                disabled={!localSupported || busy === 'local'}
-                onValueChange={toggleLocal}
-                accessibilityLabel="Recognize faces on this phone"
-              />
-            }
-          />
-          {local ? (
-            <View style={styles.buttons}>
-              <Button
-                title="Refresh people"
-                variant="quiet"
-                icon="arrow.clockwise"
-                loading={busy === 'roster'}
-                onPress={() =>
-                  run(
-                    'roster',
-                    async () => {
-                      const r = await Glasses.syncRoster();
-                      setStatus(await Glasses.getStatus());
-                      setMsg({ tone: 'success', text: `${r.people} ${r.people === 1 ? 'person' : 'people'} loaded, ${r.samples} photos ready.` });
-                    },
-                    'People are up to date.'
-                  )
-                }
-                style={{ flex: 1 }}
-              />
-            </View>
-          ) : null}
+          footer="A small face model runs on this phone. Each camera frame is matched here and discarded; only who was seen goes to the memory log. No picture ever leaves the phone.">
+          <Row icon="iphone" iconTone="harbor" title="Faces are recognized on this phone" detail={rosterText} />
+          <View style={styles.buttons}>
+            <Button
+              title="Refresh people"
+              variant="quiet"
+              icon="arrow.clockwise"
+              disabled={!canSync}
+              loading={busy === 'roster'}
+              onPress={() =>
+                run(
+                  'roster',
+                  async () => {
+                    const r = await Glasses.syncRoster();
+                    setStatus(await Glasses.getStatus());
+                    setMsg({ tone: 'success', text: `${r.people} ${r.people === 1 ? 'person' : 'people'} loaded, ${r.samples} photos ready.` });
+                  },
+                  'People are up to date.'
+                )
+              }
+              style={{ flex: 1 }}
+            />
+          </View>
         </Group>
 
         <Group title="Privacy" footer="These are built in, not settings. They cannot be turned off.">
           <Row icon="person.2" iconTone="harbor" title="Only people you add are recognized" detail="No search of strangers, ever." />
-          <Row icon="eye.slash" iconTone="harbor" title="Camera frames are never saved" detail="Each frame is matched in memory and discarded." />
+          <Row icon="eye.slash" iconTone="harbor" title="Camera frames never leave the phone" detail="Each frame is matched on the phone and discarded." />
           <Row icon="trash" iconTone="harbor" title="You can delete any moment" detail="Touch and hold a moment in Today." />
         </Group>
 

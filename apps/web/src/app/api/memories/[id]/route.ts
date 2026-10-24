@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
-import { invalidateRoster } from "@/lib/match";
 import { cleanCallout, cleanMemoryText, serializeMemory } from "@/lib/memories";
 import { errorResponse, HttpError, readJson } from "../../_lib/http";
 
@@ -31,7 +30,6 @@ export async function PATCH(req: Request, { params }: Params) {
       data.useInCallout = body.useInCallout;
     }
     const memory = await prisma.memory.update({ where: { id }, data });
-    invalidateRoster(patientId);
     return Response.json({ memory: serializeMemory(memory) });
   } catch (error) {
     return errorResponse(error);
@@ -44,7 +42,6 @@ export async function DELETE(req: Request, { params }: Params) {
     const { id } = await params;
     const { count } = await prisma.memory.deleteMany({ where: { id, patientId } });
     if (count === 0) throw new HttpError(404, "Memory not found");
-    invalidateRoster(patientId);
     return new Response(null, { status: 204 });
   } catch (error) {
     return errorResponse(error);

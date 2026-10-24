@@ -78,12 +78,7 @@ public final class GlassesModule: Module {
       try await GlassesController.shared.stopListening()
     }
 
-    // On-device recognition (Core ML) instead of POST /api/frames. Persisted; throws if the model is missing.
-    AsyncFunction("setLocalRecognition") { (enabled: Bool) async throws -> [String: Any] in
-      try await GlassesController.shared.setLocalRecognition(enabled)
-      return await GlassesController.shared.status()
-    }
-
+    // Re-embed everyone's enrollment photos on the phone (after enrolling or editing people elsewhere).
     AsyncFunction("syncRoster") { () async throws -> [String: Any] in
       try await GlassesController.shared.syncRoster()
     }
@@ -110,22 +105,19 @@ enum Enroll {
     form.addField("name", name)
     if let r = p.relationship, !r.isEmpty { form.addField("relationship", r) }
     if let n = p.notes, !n.isEmpty { form.addField("notes", n) }
-    var localBoxes: [[Int]] = []
-    let local = LocalRecognition.shared.enabled
+    // Every photo must contain a face the on-device model can embed; the boxes go up with the
+    // photos so the server can crop the avatar around the face (it does no face detection itself).
+    var boxes: [[Int]] = []
     for (i, uri) in p.photoUris.enumerated() {
       let jpeg = try loadJPEG(uri)
-      if local, let img = UIImage(data: jpeg) {
-        // Check for a face on the phone so enrollment does not depend on the Python sidecar.
-        let faces = try FaceRecognizer.shared.detectAndEmbed(img, maxFaces: 1)
-        guard let face = faces.first else { throw GlassesError("No face found in photo \(i + 1)") }
-        localBoxes.append(face.box)
-      }
+      guard let img = UIImage(data: jpeg) else { throw GlassesError("Photo \(i + 1) is not an image") }
+      let faces = try FaceRecognizer.shared.detectAndEmbed(img, maxFaces: 1)
+      guard let face = faces.first else { throw GlassesError("No face found in photo \(i + 1)") }
+      boxes.append(face.box)
       form.addFile("photos", filename: "photo\(i).jpg", mime: "image/jpeg", data: jpeg)
     }
-    if local, localBoxes.count == p.photoUris.count,
-       let json = try? JSONSerialization.data(withJSONObject: localBoxes), let s = String(data: json, encoding: .utf8) {
-      form.addField("faces", s)  // server uses these boxes if its face service is unreachable
-    }
+    let json = try JSONSerialization.data(withJSONObject: boxes)
+    form.addField("faces", String(decoding: json, as: UTF8.self))
     let body = form.finish()
     let req = try BackendClient.shared.request("/api/people", method: "POST", contentType: form.contentType, body: body, timeout: 60)
     let (data, status) = try await BackendClient.shared.send(req)
@@ -137,13 +129,10 @@ enum Enroll {
     }
     let person = obj["person"] as? [String: Any]
     let personId = person?["id"] as? String ?? ""
-    let samples: Int
-    if let n = obj["samples"] as? Int { samples = n } else if let arr = obj["samples"] as? [Any] { samples = arr.count } else { samples = 0 }
-    if local {
-      // The new face is matched on the phone: refresh the local roster right away.
-      do { _ = try await GlassesController.shared.syncRoster() } catch { NSLog("[Glasses] roster sync after enroll failed: \(error)") }
-    }
-    return ["personId": personId, "samples": samples]
+    let photos = person?["photoCount"] as? Int ?? p.photoUris.count
+    // The new face is matched on the phone: refresh the local roster right away.
+    do { _ = try await GlassesController.shared.syncRoster() } catch { NSLog("[Glasses] roster sync after enroll failed: \(error)") }
+    return ["personId": personId, "photos": photos]
   }
 
   /// Reads a file:// URI (or bare path), downsizes to 1280px max and re-encodes as JPEG.

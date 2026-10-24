@@ -8,7 +8,6 @@
   "scripts": {
     "dev:web": "pnpm --filter web dev",
     "dev:mobile": "pnpm --filter mobile start",
-    "dev:face": "cd apps/face && ~/.local/bin/uv run uvicorn main:app --host 127.0.0.1 --port 8001",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
     "typecheck": "pnpm -r typecheck"

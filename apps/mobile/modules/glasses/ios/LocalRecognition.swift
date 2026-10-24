@@ -1,11 +1,11 @@
 import Foundation
 import UIKit
 
-/// On-device replacement for `POST /api/frames`: the frame never leaves the phone. Faces are
-/// embedded by `FaceRecognizer`, matched against the family roster (embeddings computed on the
-/// phone from the enrollment photos), debounced exactly like `apps/web/src/lib/match.ts`, and
-/// only the *decision* (`personId` or unknown, score, box) is posted to `POST /api/recognitions`,
-/// which logs the events and returns the sentence to speak.
+/// On-device face recognition. Glasses frames never leave the phone: faces are embedded by
+/// `FaceRecognizer` (Core ML), matched against the family roster (embeddings computed on the
+/// phone from the enrollment photos), debounced (5 min per person, 60 s for strangers), and only
+/// the *decision* (`personId` or unknown, score, box) is posted to `POST /api/recognitions`,
+/// which logs the moment and returns the sentence to speak.
 final class LocalRecognition {
   static let shared = LocalRecognition()
 
@@ -17,14 +17,11 @@ final class LocalRecognition {
   struct Person { let id: String; let name: String; let relationship: String?; let line: String }
   private struct Sample { let personId: String; let embedding: [Float] }
 
-  private let enabledKey = "recall.localRecognition"
   private let queue = DispatchQueue(label: "recall.frames.local", qos: .userInitiated)
   private let lock = NSLock()
 
-  private(set) var enabled: Bool {
-    get { UserDefaults.standard.bool(forKey: enabledKey) }
-    set { UserDefaults.standard.set(newValue, forKey: enabledKey) }
-  }
+  /// Frames are only processed while a stream is running (set by GlassesController).
+  private var active = false
 
   // Roster (guarded by `lock`).
   private var people: [String: Person] = [:]
@@ -42,7 +39,7 @@ final class LocalRecognition {
   private let minInterval: TimeInterval = 0.25
   private var lastErrorAt = Date.distantPast
 
-  /// Same shape as the `/api/frames` response body (faces, optional speak) plus frame size.
+  /// `{faces, speak?}` for the UI plus the frame size.
   var onResult: (([String: Any], Int, Int) -> Void)?
   var onError: ((String) -> Void)?
   /// Called with (speechId?, text) when a line should be spoken.
@@ -56,15 +53,8 @@ final class LocalRecognition {
     return body()
   }
 
-  // MARK: Enable / disable
-
-  /// Turning it on loads the model (throws if the model is missing) and starts a roster sync.
-  func setEnabled(_ on: Bool) async throws {
-    if on { try FaceRecognizer.shared.load() }
-    enabled = on
-    if on {
-      do { _ = try await syncRoster() } catch { lastSyncError = error.localizedDescription; throw error }
-    }
+  func setActive(_ on: Bool) {
+    lock.lock(); active = on; lock.unlock()
   }
 
   var rosterCounts: (people: Int, samples: Int) {
@@ -136,7 +126,7 @@ final class LocalRecognition {
 
   struct Match { let box: [Int]; let score: Float; let person: Person? }
 
-  /// A person's score is their best sample; known if ≥ threshold. Mirrors `matchFaces` in match.ts.
+  /// A person's score is their best sample; known if ≥ threshold.
   func match(_ detections: [FaceRecognizer.Detection]) -> [Match] {
     lock.lock(); let samples = self.samples, people = self.people; lock.unlock()
     return detections.map { det in
@@ -157,7 +147,7 @@ final class LocalRecognition {
     return s
   }
 
-  // MARK: Debounce (mirrors claim/shouldAnnounce* in match.ts)
+  // MARK: Debounce
 
   private func claim(_ key: String, window: TimeInterval) -> Bool {
     lock.lock(); defer { lock.unlock() }
@@ -172,12 +162,12 @@ final class LocalRecognition {
 
   // MARK: Frames
 
-  /// Accepts a frame if the pipeline is idle (≤ 4 fps). Returns true when accepted.
+  /// Accepts a frame if a stream is active and the pipeline is idle (≤ 4 fps). Returns true when accepted.
   @discardableResult
   func offer(_ image: UIImage) -> Bool {
     lock.lock()
     let now = Date()
-    guard enabled, !busy, now.timeIntervalSince(lastFrameAt) >= minInterval else { lock.unlock(); return false }
+    guard active, !busy, now.timeIntervalSince(lastFrameAt) >= minInterval else { lock.unlock(); return false }
     busy = true
     lastFrameAt = now
     lock.unlock()
@@ -194,7 +184,7 @@ final class LocalRecognition {
     do {
       detections = try FaceRecognizer.shared.detectAndEmbed(image)
     } catch {
-      report("Local recognition failed: \(error.localizedDescription)")
+      report("Face recognition failed: \(error.localizedDescription)")
       return
     }
     let matches = match(detections)
@@ -229,6 +219,7 @@ final class LocalRecognition {
     let localText = lines.joined(separator: " ")
     if !lines.isEmpty { body["speak"] = ["speechId": "", "text": localText] }
     onResult?(body, w, h)
+    // `image` goes out of scope here: the frame is discarded, never written anywhere.
 
     guard !events.isEmpty else { return }
     Task {

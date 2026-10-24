@@ -5,7 +5,7 @@ ArcFace-aligned 112x112 crop (what the Core ML model sees) and the MobileFaceNet
 embedding, plus the buffalo_l (w600k_r50, the Python sidecar's model) embedding when the pack is
 available. Output: <out>/reference.json and <out>/<name>.aligned.png.
 
-    python reference_embeddings.py --root /dir/containing/models/buffalo_sc --out /tmp/ref apps/face/testdata/*.jpg
+    python reference_embeddings.py --root /dir/containing/models/buffalo_sc --out /tmp/ref scripts/testdata/*.jpg
 
 The simulator self-test (FaceSelfTest.swift) reads this folder and reports cosine agreement.
 """

@@ -1,6 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { knownLine, UNKNOWN_LINE } from "@/lib/match";
+import { knownLine, UNKNOWN_LINE } from "@/lib/line";
 import { logEvent } from "@/lib/events";
 import { speechIdFor } from "@/lib/tts";
 import { errorResponse, HttpError, readJson } from "../_lib/http";
@@ -12,10 +12,10 @@ type Incoming = {
 const MAX_EVENTS = 4;
 
 /**
- * On-device recognition (Swift `LocalRecognition`): the phone matched a frame against the roster
- * itself and already applied the 5 min / 60 s debounce. It sends only the decision; this route
- * logs RECOGNITION / UNKNOWN + SPOKEN exactly like /api/frames and returns the sentence to say.
- * No image bytes ever reach the server on this path.
+ * The phone (Swift `LocalRecognition`, Core ML) matched a glasses frame against the family roster
+ * on the device and already applied the 5 min / 60 s debounce. It sends only the decision; this
+ * route logs RECOGNITION / UNKNOWN + SPOKEN and returns the sentence to say. No camera frame ever
+ * reaches the server: this is the only recognition path.
  */
 export async function POST(req: Request) {
   try {
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
         await logEvent(patientId, "RECOGNITION", line, { personId: person.id, data: { score, box, source: "device" } });
       } else if (!sawUnknown) {
         sawUnknown = true;
-        // Same rule as /api/frames: strangers are announced only when nobody known is in frame.
+        // Strangers are announced only when nobody known is in frame (the phone applies the same rule).
         if (announced.length === 0) {
           lines.push(UNKNOWN_LINE);
           await logEvent(patientId, "UNKNOWN", UNKNOWN_LINE, { data: { score, box, count: e.count ?? 1, source: "device" } });

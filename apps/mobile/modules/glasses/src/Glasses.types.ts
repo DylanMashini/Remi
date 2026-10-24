@@ -8,15 +8,13 @@ export type GlassesStatus = {
   streaming: boolean;
   audioRoute: AudioRoute;
   mock: boolean;
-  /** Faces are matched on the phone (Core ML) instead of POST /api/frames. */
-  localRecognition: boolean;
-  /** Size of the on-device roster (people / embedded photos); 0 when local recognition is off. */
+  /** Size of the on-device roster: people, and enrollment photos embedded on the phone. */
   rosterPeople: number;
   rosterSamples: number;
 };
 
 export type Face = {
-  /** [x, y, w, h] in pixels of the uploaded frame. */
+  /** [x, y, w, h] in pixels of the camera frame. */
   box: [number, number, number, number];
   personId?: string;
   name?: string;
@@ -26,13 +24,13 @@ export type Face = {
 
 export type SpeakLine = { speechId: string; text: string };
 
+/** Result of matching one frame on the phone. The frame itself is discarded. */
 export type FrameResult = {
   faces: Face[];
+  /** Present when a line is about to be spoken; speechId is "" until /api/recognitions answers. */
   speak?: SpeakLine;
   frameWidth: number;
   frameHeight: number;
-  /** True when this result came from on-device recognition (the frame never left the phone). */
-  local?: boolean;
 };
 
 export type RosterSyncResult = { people: number; samples: number };
@@ -50,7 +48,7 @@ export type EnrollPersonOptions = {
   photoUris: string[];
 };
 
-export type EnrollResult = { personId: string; samples: number };
+export type EnrollResult = { personId: string; photos: number };
 
 export type AskResult = { question: string; answer: string };
 

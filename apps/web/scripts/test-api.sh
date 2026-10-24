@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # End-to-end smoke test for the glasses/caregiver API.
 # Usage: BASE=http://127.0.0.1:3102 apps/web/scripts/test-api.sh
-# Needs: running Next server, face sidecar on :8001, seeded user, jq.
+# Needs: running Next server, seeded user, jq. Face matching happens on the phone, so recognition
+# is exercised by posting decisions to /api/recognitions the way the Swift module does.
 set -uo pipefail
 
 BASE="${BASE:-http://127.0.0.1:3102}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-TESTDATA="${TESTDATA:-$HERE/../../face/testdata}"
+TESTDATA="${TESTDATA:-$HERE/../../../scripts/testdata}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 PASS=0; FAIL=0; SKIP=0
@@ -19,13 +20,11 @@ has_key() { grep -Eq "^$1=\"?[^\"]+\"?\s*$" "$HERE/../.env" 2>/dev/null; }
 
 echo "== Recall API smoke test against $BASE"
 
-# Photos: enroll with obama_a + a mirrored copy, recognize from obama_b (a different photo).
+# Photos: enroll with obama_a + a mirrored copy.
 cp "$TESTDATA/obama_a.jpg" "$TMP/enroll1.jpg"
 sips -f horizontal "$TESTDATA/obama_a.jpg" --out "$TMP/enroll2.jpg" >/dev/null 2>&1 || cp "$TESTDATA/obama_a.jpg" "$TMP/enroll2.jpg"
-cp "$TESTDATA/obama_b.jpg" "$TMP/frame.jpg"
-# A face-free JPEG for the 422 check.
-node -e 'require("sharp")({create:{width:200,height:200,channels:3,background:"#88aacc"}}).jpeg().toFile(process.argv[1])' "$TMP/noface.jpg" 2>/dev/null \
-  || (cd "$HERE/.." && node -e 'require("sharp")({create:{width:200,height:200,channels:3,background:"#88aacc"}}).jpeg().toFile(process.argv[1])' "$TMP/noface.jpg")
+# Not an image, for the 422 check.
+printf 'not a jpeg' > "$TMP/broken.jpg"
 
 # 1. Device login
 TOKEN=$(curl -s -X POST "$BASE/api/auth/login?client=device" -H 'content-type: application/json' \
@@ -37,20 +36,20 @@ AUTH=(-H "authorization: Bearer $TOKEN")
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/people")
 [ "$code" = 401 ] && ok "unauthenticated GET /api/people -> 401" || bad "unauthenticated GET /api/people -> $code"
 
-# 2. Enrollment rejects a face-free photo with 422 + index, saving nothing
+# 2. Enrollment rejects an unreadable photo with 422 + index, saving nothing
 before=$(curl -s "${AUTH[@]}" "$BASE/api/people" | jq '.people | length')
-resp=$(curl -s -w '\n%{http_code}' "${AUTH[@]}" -F name="Nobody" -F photos=@"$TMP/enroll1.jpg;type=image/jpeg" -F photos=@"$TMP/noface.jpg;type=image/jpeg" "$BASE/api/people")
+resp=$(curl -s -w '\n%{http_code}' "${AUTH[@]}" -F name="Nobody" -F photos=@"$TMP/enroll1.jpg;type=image/jpeg" -F photos=@"$TMP/broken.jpg;type=image/jpeg" "$BASE/api/people")
 code=$(echo "$resp" | tail -1); body=$(echo "$resp" | sed '$d')
 after=$(curl -s "${AUTH[@]}" "$BASE/api/people" | jq '.people | length')
 [ "$code" = 422 ] && [ "$(echo "$body" | jq -r .index)" = 1 ] && [ "$before" = "$after" ] \
-  && ok "no-face photo -> 422 index=1, nothing saved" || bad "no-face photo -> $code $body (people $before -> $after)"
+  && ok "unreadable photo -> 422 index=1, nothing saved" || bad "unreadable photo -> $code $body (people $before -> $after)"
 
 # 3. Enroll a person with 2 photos
 resp=$(curl -s -w '\n%{http_code}' "${AUTH[@]}" -F name="Barack" -F relationship="old friend" \
   -F notes="You met him in Chicago." -F photos=@"$TMP/enroll1.jpg;type=image/jpeg" -F photos=@"$TMP/enroll2.jpg;type=image/jpeg" "$BASE/api/people")
 code=$(echo "$resp" | tail -1); body=$(echo "$resp" | sed '$d')
 PID=$(echo "$body" | jq -r '.person.id // empty')
-[ "$code" = 201 ] && [ -n "$PID" ] && [ "$(echo "$body" | jq .samples)" = 2 ] && ok "POST /api/people -> 201, 2 samples ($PID)" || bad "POST /api/people -> $code $body"
+[ "$code" = 201 ] && [ -n "$PID" ] && [ "$(echo "$body" | jq .person.photoCount)" = 2 ] && ok "POST /api/people -> 201, 2 photos ($PID)" || bad "POST /api/people -> $code $body"
 
 # 4. Roster lists them with an avatar that loads through the authed proxy
 AVATAR=$(curl -s "${AUTH[@]}" "$BASE/api/people" | jq -r --arg id "$PID" '.people[] | select(.id==$id) | .avatarUrl')
@@ -59,22 +58,19 @@ ctype=$(curl -s -o "$TMP/avatar.jpg" -w '%{content_type} %{http_code}' "${AUTH[@
 code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE$AVATAR")
 [ "$code" = 401 ] && ok "avatar without auth -> 401" || bad "avatar without auth -> $code"
 
-# 5. Frame of the same person (different photo) -> personId + speak
-resp=$(curl -s "${AUTH[@]}" -H 'content-type: image/jpeg' --data-binary @"$TMP/frame.jpg" "$BASE/api/frames")
-echo "        frame: $(echo "$resp" | jq -c .)"
-[ "$(echo "$resp" | jq -r '.faces[0].personId')" = "$PID" ] && ok "frame recognized person (score $(echo "$resp" | jq '.faces[0].score'))" || bad "frame recognition"
+# 5. The phone recognized him (decision only, no image) -> spoken line + speechId
+resp=$(curl -s "${AUTH[@]}" -H 'content-type: application/json' -d "{\"events\":[{\"personId\":\"$PID\",\"score\":0.71,\"box\":[40,60,180,180]}]}" "$BASE/api/recognitions")
+echo "        recognition: $(echo "$resp" | jq -c .)"
 SPEECH=$(echo "$resp" | jq -r '.speak.speechId // empty')
-[ -n "$SPEECH" ] && ok "frame returned speak: $(echo "$resp" | jq -r .speak.text)" || bad "no speak on first sighting"
+[ -n "$SPEECH" ] && ok "recognition returned speak: $(echo "$resp" | jq -r .speak.text)" || bad "no speak for recognition: $resp"
 
-# 6. Debounce: same frame again -> no speak
-resp=$(curl -s "${AUTH[@]}" -H 'content-type: image/jpeg' --data-binary @"$TMP/frame.jpg" "$BASE/api/frames")
-[ "$(echo "$resp" | jq 'has("speak")')" = false ] && [ "$(echo "$resp" | jq -r '.faces[0].personId')" = "$PID" ] \
-  && ok "second frame debounced (no speak, still boxed)" || bad "debounce: $resp"
+# 6. Unknown person -> "Someone new is here."
+resp=$(curl -s "${AUTH[@]}" -H 'content-type: application/json' -d '{"events":[{"personId":null,"score":0.12,"box":[10,10,100,100],"count":1}]}' "$BASE/api/recognitions")
+[ "$(echo "$resp" | jq -r '.speak.text // empty')" = "Someone new is here." ] && ok "unknown -> \"Someone new is here.\"" || bad "unknown: $resp"
 
-# 7. Unknown face -> "Someone new is here." (may be debounced if run twice within 60 s)
-resp=$(curl -s "${AUTH[@]}" -H 'content-type: image/jpeg' --data-binary @"$TESTDATA/biden.jpg" "$BASE/api/frames")
-echo "        unknown: $(echo "$resp" | jq -c .)"
-[ "$(echo "$resp" | jq -r '.faces[0] | has("personId")')" = false ] && ok "unknown face has no personId ($(echo "$resp" | jq -r '.speak.text // "debounced"'))" || bad "unknown face matched someone"
+# 7. Bad body -> 400
+code=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" -H 'content-type: application/json' -d '{"events":[]}' "$BASE/api/recognitions")
+[ "$code" = 400 ] && ok "empty events -> 400" || bad "empty events -> $code"
 
 # 8. Speech audio
 if has_key ELEVENLABS_API_KEY && has_key ELEVENLABS_VOICE_ID; then
@@ -129,8 +125,8 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "${AUTH[@]}" "$BASE/api/
 [ "$code" = 204 ] && ok "DELETE person" || bad "DELETE person -> $code"
 code=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$BASE$AVATAR")
 [ "$code" = 404 ] && ok "avatar gone after delete" || bad "avatar after delete -> $code"
-resp=$(curl -s "${AUTH[@]}" -H 'content-type: image/jpeg' --data-binary @"$TMP/frame.jpg" "$BASE/api/frames")
-[ "$(echo "$resp" | jq -r '.faces[0] | has("personId")')" = false ] && ok "deleted person no longer recognized" || bad "still recognized after delete: $resp"
+code=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" -H 'content-type: application/json' -d "{\"events\":[{\"personId\":\"$PID\",\"score\":0.9}]}" "$BASE/api/recognitions")
+[ "$code" = 404 ] && ok "recognition of a deleted person -> 404" || bad "recognition of deleted person -> $code"
 
 echo "== $PASS passed, $FAIL failed, $SKIP skipped"
 [ "$FAIL" = 0 ]

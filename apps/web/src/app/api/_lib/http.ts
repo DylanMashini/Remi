@@ -12,7 +12,7 @@ export class HttpError extends Error {
   }
 }
 
-/** Errors from upstream services (face sidecar, ElevenLabs, Claude) carry a status too. */
+/** Errors from upstream services (ElevenLabs, Claude) carry a status too. */
 type StatusError = Error & { status?: number; extra?: Record<string, unknown> };
 
 /** Converts any thrown value into a JSON error response. Logs unexpected errors. */

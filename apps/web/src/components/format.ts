@@ -70,7 +70,7 @@ function sentence(s: string): string {
   return /[.!?]$/.test(t) ? t : `${t}.`;
 }
 
-/** The exact line the glasses say for a known person (matches lib/match.ts and CONTRACT.md). */
+/** The exact line the glasses say for a known person (matches lib/line.ts and CONTRACT.md). */
 export function knownLine(p: { name: string; relationship?: string | null; notes?: string | null; memory?: string | null }): string {
   const parts = [p.relationship ? `This is ${p.name}, your ${p.relationship}.` : `This is ${p.name}.`];
   if (p.notes?.trim()) parts.push(sentence(p.notes));
