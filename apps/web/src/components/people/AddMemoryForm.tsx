@@ -1,37 +1,46 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useState, useTransition } from "react";
 import { addMemory, type FormState } from "@/app/(care)/actions";
-import { buttonSecondary, inputClass, labelClass } from "../ui";
+import { buttonSecondary, Field, FormStatus, textareaClass } from "../ui";
 
 export function AddMemoryForm({ personId, personName }: { personId: string; personName: string }) {
-  const [state, formAction, pending] = useActionState<FormState, FormData>(addMemory.bind(null, personId), {});
-  const formRef = useRef<HTMLFormElement>(null);
-  useEffect(() => {
-    if (state.ok) formRef.current?.reset();
-  }, [state]);
+  const [state, setState] = useState<FormState>({});
+  const [pending, start] = useTransition();
+  const [text, setText] = useState("");
+
+  function submit(fd: FormData) {
+    start(async () => {
+      const r = await addMemory(personId, {}, fd);
+      setState(r);
+      if (r.ok) setText("");
+    });
+  }
 
   return (
-    <form ref={formRef} action={formAction} className="flex flex-col gap-3">
-      <label htmlFor="memory-text" className={labelClass}>Something to remember about {personName}</label>
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <input
+    <form action={submit} className="flex flex-col gap-3">
+      <Field
+        label={`Something to remember about ${personName.split(" ")[0]}`}
+        htmlFor="memory-text"
+        hint="Write it the way you would say it to them. It becomes one short spoken sentence you can edit."
+      >
+        <textarea
           id="memory-text"
           name="text"
           required
+          rows={2}
           maxLength={1000}
-          autoComplete="off"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
           placeholder="You two used to walk the dog along the river every morning."
-          className={inputClass}
+          className={textareaClass}
         />
-        <button type="submit" disabled={pending} className={`${buttonSecondary} shrink-0`}>
-          {pending ? "Adding..." : "Add memory"}
+      </Field>
+      <FormStatus error={state.error} ok={state.ok ? "Memory added. It is switched on and will be spoken as the newest one." : null} />
+      <div>
+        <button type="submit" disabled={pending || !text.trim()} className={buttonSecondary}>
+          {pending ? "Adding" : "Add memory"}
         </button>
-      </div>
-      <span className="text-sm text-ink-soft">Write it the way you would say it to them. It is turned into one short spoken sentence you can edit.</span>
-      <div role="status" aria-live="polite">
-        {state.error ? <p className="m-0 rounded-sm bg-attention-bg px-4 py-3 font-bold text-attention">{state.error}</p> : null}
-        {state.ok ? <p className="m-0 rounded-sm bg-harbor-mist px-4 py-3 font-bold text-harbor-deep">Memory added.</p> : null}
       </div>
     </form>
   );

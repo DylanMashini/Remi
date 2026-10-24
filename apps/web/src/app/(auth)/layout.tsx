@@ -1,19 +1,18 @@
 import Link from "next/link";
+import { ShieldIcon } from "@/components/icons";
+import { LogoMark } from "@/components/Logo";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center bg-[#F5F3EE] px-4 py-12 text-[#1E2B2F]">
-      <Link
-        href="/login"
-        className="mb-8 font-[family-name:var(--font-nunito)] text-[32px] font-extrabold tracking-tight text-[#2C6E68] no-underline hover:text-[#1F524D]"
-      >
-        Recall
+    <main className="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
+      <Link href="/login" className="mb-8 flex items-center gap-3 text-ink no-underline hover:text-ink">
+        <LogoMark size={40} />
+        <span className="font-display text-[30px] font-extrabold tracking-tight">Recall</span>
       </Link>
-      <div className="w-full max-w-[440px] rounded-[28px] border border-[#D9D4C8] bg-white p-8 shadow-[0_1px_2px_rgba(30,43,47,0.04),0_8px_24px_rgba(30,43,47,0.06)]">
-        {children}
-      </div>
-      <p className="mt-8 max-w-[440px] text-center text-[15px] leading-relaxed text-[#4F5D61]">
-        Faces are matched only against the people your family enrolls. Glasses frames are never stored.
+      <div className="w-full max-w-[460px] rounded-lg bg-surface p-7 shadow-float sm:p-9">{children}</div>
+      <p className="mt-8 flex max-w-[460px] items-center gap-2 text-center text-[15px] leading-relaxed text-ink-soft">
+        <ShieldIcon size={16} className="shrink-0 text-harbor" />
+        Faces are matched only against the people your family adds. Glasses frames are never stored.
       </p>
     </main>
   );

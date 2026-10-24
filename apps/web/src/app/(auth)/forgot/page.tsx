@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AuthHeading } from "../_components/heading";
 import { ForgotForm } from "../_components/forms";
 
-export const metadata: Metadata = { title: "Reset password · Recall" };
+export const metadata: Metadata = { title: "Reset password" };
 
 export default function ForgotPage() {
   return (
