@@ -16,6 +16,13 @@ const PRESETS: { label: string; minutes: number }[] = [
 
 const EXAMPLES = ["It is time for your afternoon tea.", "Sarah is coming to visit at four.", "Your pills are on the kitchen counter."];
 
+/** Handlers must not read the clock inline (React Compiler purity rule); module helpers may. */
+function fromNow(minutes: number): Date {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() + minutes, 0, 0);
+  return d;
+}
+
 function tomorrowAt9(): Date {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -52,8 +59,7 @@ export function ReminderForm({ action, patientName, nextHref, self = false }: { 
   }
 
   function choose(minutes: number) {
-    const d = minutes < 0 ? tomorrowAt9() : new Date(Date.now() + minutes * 60_000);
-    d.setSeconds(0, 0);
+    const d = minutes < 0 ? tomorrowAt9() : fromNow(minutes);
     setDue(toLocalInput(d));
     setPicked(minutes);
   }
