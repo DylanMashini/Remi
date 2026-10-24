@@ -14,9 +14,16 @@ compiled). It is what `FaceRecognizer.swift` runs on the phone when local recogn
 - Scores on `apps/face/testdata` (InsightFace alignment): same person 0.73, different person
   -0.06 / 0.03, so the server's 0.5 threshold carries over.
 
-Face detection and landmarks come from Apple Vision (`VNDetectFaceLandmarksRequest`); the 5
-ArcFace points are eye centres, nose tip and mouth corners, warped with a least-squares
-similarity transform, so no detector model ships with the app.
+Face detection comes from Apple Vision (`VNDetectFaceRectanglesRequest`), so no detector model
+ships with the app. There is no landmark alignment: a square crop of 1.3x the face box, shifted
+up by 0.2 box heights, resized to 112x112, matches InsightFace's landmark-aligned embedding at
+cosine 0.97 / 0.94 / 0.96 on the three test photos (`FaceRecognizer.cropScale` / `cropShiftY`,
+tuned by the sweep in `FaceSelfTest`). Vision's landmark request returned garbage on the iOS 27
+simulator (eyes 4 px apart), which is why the box crop won.
+
+Measured on the iPhone 17 simulator (CPU only, Debug): model load 41 ms, embedding 8-14 ms per
+face, Vision + crop + embedding 50-78 ms per photo. Pipeline pair cosines: same person 0.70,
+different people -0.01 / 0.06 (InsightFace: 0.73, -0.06 / 0.03); match decisions agree 3/3 at 0.5.
 
 ## Regenerating
 
