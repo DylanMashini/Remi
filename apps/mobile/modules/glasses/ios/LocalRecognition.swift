@@ -50,6 +50,12 @@ final class LocalRecognition {
 
   private init() {}
 
+  /// Synchronous critical section (callable from async code without the Swift 6 lock warning).
+  private func withLock<T>(_ body: () -> T) -> T {
+    lock.lock(); defer { lock.unlock() }
+    return body()
+  }
+
   // MARK: Enable / disable
 
   /// Turning it on loads the model (throws if the model is missing) and starts a roster sync.
@@ -78,9 +84,7 @@ final class LocalRecognition {
 
     var newPeople: [String: Person] = [:]
     var newSamples: [Sample] = []
-    lock.lock()
-    var cache = embeddingByFile
-    lock.unlock()
+    var cache = withLock { embeddingByFile }
     var failures = 0
     for p in list {
       guard let id = p["id"] as? String, let name = p["name"] as? String else { continue }
@@ -111,13 +115,13 @@ final class LocalRecognition {
       }
     }
     let known = Set(newSamples.map { $0.personId })
-    lock.lock()
-    people = newPeople
-    samples = newSamples
-    embeddingByFile = cache
-    lastSyncAt = Date()
-    lastSyncError = failures > 0 ? "\(failures) photo(s) could not be embedded" : nil
-    lock.unlock()
+    withLock {
+      people = newPeople
+      samples = newSamples
+      embeddingByFile = cache
+      lastSyncAt = Date()
+      lastSyncError = failures > 0 ? "\(failures) photo(s) could not be embedded" : nil
+    }
     NSLog("[Glasses] roster synced: \(newPeople.count) people, \(newSamples.count) samples, \(newPeople.count - known.count) without a usable photo")
     return (newPeople.count, newSamples.count)
   }
