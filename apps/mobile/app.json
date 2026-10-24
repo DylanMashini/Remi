@@ -6,11 +6,12 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "memoryaid",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.dylanmashini.memoryaid",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "appleTeamId": "C78UA9J77Y"
     },
     "android": {
       "adaptiveIcon": {
@@ -30,7 +31,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#F5F3EE",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
@@ -47,6 +48,15 @@
         "./plugins/withMetaWearables",
         {
           "appId": "0"
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Recall uses the camera to take photos of family members so the glasses can recognize them, and to simulate the glasses in demo mode.",
+          "microphonePermission": "Listen when you ask a question, so Recall can answer.",
+          "recordAudioAndroid": false
         }
       ]
     ],

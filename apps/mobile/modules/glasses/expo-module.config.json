@@ -1,6 +1,7 @@
 {
   "platforms": ["apple"],
   "apple": {
-    "modules": ["GlassesModule"]
+    "modules": ["GlassesModule"],
+    "appDelegateSubscribers": ["GlassesAppDelegateSubscriber"]
   }
 }

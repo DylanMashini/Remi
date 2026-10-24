@@ -1,25 +1,58 @@
-const { withInfoPlist } = require('expo/config-plugins');
+const { withEntitlementsPlist, withInfoPlist } = require('expo/config-plugins');
 
-/** Info.plist entries required by the Meta Wearables Device Access Toolkit. Survives `expo prebuild --clean`. */
-module.exports = function withMetaWearables(config, { urlScheme, appId = '0', clientToken = '', teamId = '' } = {}) {
+/**
+ * Info.plist entries required by the Meta Wearables Device Access Toolkit (DAT 1.0.x).
+ * Survives `expo prebuild --clean`. The SDK itself is vendored by modules/glasses/ios/Glasses.podspec.
+ */
+// TeamID defaults to the build's signing team; DAT rejects a misconfigured (empty) TeamID.
+module.exports = function withMetaWearables(config, { urlScheme, appId = '0', clientToken = '0', teamId = '$(DEVELOPMENT_TEAM)' } = {}) {
+  const scheme = urlScheme ?? (Array.isArray(config.scheme) ? config.scheme[0] : config.scheme) ?? 'memoryaid';
+  // Wi-Fi camera streaming joins the glasses' hotspot, which needs this capability.
+  config = withEntitlementsPlist(config, (config) => {
+    config.modResults['com.apple.developer.networking.HotspotConfiguration'] = true;
+    return config;
+  });
   return withInfoPlist(config, (config) => {
     const plist = config.modResults;
     const merge = (key, values) => {
       plist[key] = [...new Set([...(plist[key] ?? []), ...values])];
     };
 
+    // Meta AI calls back on this scheme after registration / permission grants.
     plist.MWDAT = {
       ...plist.MWDAT,
-      AppLinkURLScheme: `${urlScheme ?? config.scheme}://`,
+      AppLinkURLScheme: `${scheme}://`,
       MetaAppID: appId,
       ClientToken: clientToken,
       TeamID: teamId,
     };
+
+    // Make sure the scheme is actually registered as a URL type (expo adds config.scheme, but a
+    // custom urlScheme option would not be).
+    const urlTypes = plist.CFBundleURLTypes ?? [];
+    const hasScheme = urlTypes.some((t) => (t.CFBundleURLSchemes ?? []).includes(scheme));
+    if (!hasScheme) {
+      urlTypes.push({ CFBundleURLSchemes: [scheme] });
+    }
+    plist.CFBundleURLTypes = urlTypes;
+
     plist.NSBluetoothAlwaysUsageDescription = 'Connect to your Meta glasses.';
-    plist.NSLocalNetworkUsageDescription = 'Communicate with your Meta glasses.';
+    plist.NSLocalNetworkUsageDescription = 'Communicate with your Meta glasses and the Recall server.';
+    plist.NSMicrophoneUsageDescription =
+      plist.NSMicrophoneUsageDescription ?? 'Listen when you ask a question, so Recall can answer.';
+    plist.NSCameraUsageDescription =
+      plist.NSCameraUsageDescription ?? 'Recall uses the camera to take photos of family members so the glasses can recognize them, and to simulate the glasses in demo mode.';
+    plist.NSPhotoLibraryUsageDescription =
+      plist.NSPhotoLibraryUsageDescription ?? 'Choose photos of family members to enroll.';
+    // Dev backend runs over plain http on the Mac's LAN IP.
+    plist.NSAppTransportSecurity = {
+      ...(plist.NSAppTransportSecurity ?? {}),
+      NSAllowsArbitraryLoads: true,
+      NSAllowsLocalNetworking: true,
+    };
     merge('NSBonjourServices', ['_bonjour._tcp']);
     merge('UISupportedExternalAccessoryProtocols', ['com.meta.ar.wearable']);
-    merge('UIBackgroundModes', ['external-accessory', 'bluetooth-central', 'bluetooth-peripheral']);
+    merge('UIBackgroundModes', ['external-accessory', 'bluetooth-central', 'bluetooth-peripheral', 'audio']);
     return config;
   });
 };

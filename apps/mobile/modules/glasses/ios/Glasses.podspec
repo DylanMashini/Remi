@@ -1,7 +1,21 @@
+DAT_VERSION = '1.0.1'
+dat_dir = File.join(__dir__, 'Frameworks')
+dat_frameworks = %w[MWDATCore MWDATCamera MWDATMockDevice]
+
+# The DAT SDK ships as binary dynamic xcframeworks inside its Swift package. We vendor them
+# (fetched on demand, gitignored) instead of using spm_dependency, because SPM binary targets
+# linked into a static pod are not embedded into the app bundle (dyld crash at launch).
+unless dat_frameworks.all? { |f| File.exist?(File.join(dat_dir, "#{f}.xcframework")) } &&
+       File.exist?(File.join(dat_dir, 'VERSION')) &&
+       File.read(File.join(dat_dir, 'VERSION')).strip == DAT_VERSION
+  ok = system('sh', File.join(__dir__, 'scripts', 'fetch-dat.sh'), DAT_VERSION)
+  raise "[Glasses] Failed to fetch Meta Wearables DAT #{DAT_VERSION}" unless ok
+end
+
 Pod::Spec.new do |s|
   s.name           = 'Glasses'
   s.version        = '0.1.0'
-  s.summary        = 'Meta Ray-Ban glasses bridge and photo processing'
+  s.summary        = 'Meta Ray-Ban glasses bridge (DAT SDK) for Recall'
   s.description    = s.summary
   s.author         = ''
   s.homepage       = 'https://docs.expo.dev/modules/'
@@ -9,12 +23,12 @@ Pod::Spec.new do |s|
   s.platforms      = { :ios => '17.2' }
   s.source         = { :git => '' }
   s.static_framework = true
-  s.swift_version  = '6.0'
+  s.swift_version  = '5.9'
 
   s.dependency 'ExpoModulesCore'
-  # Add the Meta Wearables DAT SDK here once vendored, e.g.:
-  # s.dependency 'MetaWearablesDAT', '= 1.0.1'
+  s.vendored_frameworks = dat_frameworks.map { |f| "Frameworks/#{f}.xcframework" }
+  s.frameworks = 'AVFoundation', 'Speech', 'Security'
 
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
-  s.source_files = '**/*.{h,m,mm,swift}'
+  s.source_files = '*.{h,m,mm,swift}'
 end
