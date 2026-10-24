@@ -45,6 +45,9 @@ export type EnrollResult = { personId: string; samples: number };
 
 export type AskResult = { question: string; answer: string };
 
+/** Transcript of what the wearer just said (Remember visits). */
+export type ListenResult = { text: string };
+
 export type GlassesModuleEvents = {
   onStatus: (status: GlassesStatus) => void;
   onFrameResult: (result: FrameResult) => void;

@@ -7,6 +7,7 @@ import type {
   EnrollResult,
   GlassesModuleEvents,
   GlassesStatus,
+  ListenResult,
   StartStreamOptions,
 } from './Glasses.types';
 
@@ -20,6 +21,8 @@ declare class GlassesModule extends NativeModule<GlassesModuleEvents> {
   captureGlassesPhoto(): Promise<string>;
   startAsk(): Promise<void>;
   stopAsk(): Promise<AskResult>;
+  startListening(): Promise<void>;
+  stopListening(): Promise<ListenResult>;
   speak(speechId: string, text: string): Promise<void>;
 }
 

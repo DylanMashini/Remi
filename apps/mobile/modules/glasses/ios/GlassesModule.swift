@@ -70,6 +70,14 @@ public final class GlassesModule: Module {
       try await GlassesController.shared.stopAsk()
     }
 
+    AsyncFunction("startListening") { () async throws in
+      try await GlassesController.shared.startListening()
+    }
+
+    AsyncFunction("stopListening") { () async throws -> [String: Any] in
+      try await GlassesController.shared.stopListening()
+    }
+
     AsyncFunction("speak") { (speechId: String, text: String) async throws in
       await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
         Task { @MainActor in

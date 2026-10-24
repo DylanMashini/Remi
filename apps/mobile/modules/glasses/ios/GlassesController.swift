@@ -488,6 +488,27 @@ final class GlassesController {
     return ["question": question, "answer": answer]
   }
 
+  // MARK: Listen (Remember visits)
+
+  /// Starts mic capture for a memory the wearer is about to share. Same capture path as ask.
+  func startListening() throws {
+    setup()
+    try audio.startAsk()
+    NSLog("[Glasses] listen: recording via \(audio.source)")
+  }
+
+  /// Stops capture and returns the transcript from /api/transcribe. Nothing is logged server-side
+  /// until the wearer chooses to keep the memory.
+  func stopListening() async throws -> [String: Any] {
+    let wav = audio.stopAsk()
+    guard wav.count > 44 + 16000 / 2 else { throw GlassesError("No audio captured") } // < ~0.25 s
+    let req = try BackendClient.shared.request("/api/transcribe", method: "POST", contentType: "audio/wav", body: wav, timeout: 45)
+    let obj = try await BackendClient.shared.sendJSON(req)
+    let text = obj["text"] as? String ?? ""
+    NSLog("[Glasses] listen heard: \(text)")
+    return ["text": text]
+  }
+
   // MARK: Utilities
 
   private func waitUntil(timeout: TimeInterval, _ what: String, _ cond: @escaping () -> Bool) async throws {

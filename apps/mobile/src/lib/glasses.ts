@@ -59,6 +59,8 @@ type NativeGlasses = {
   captureGlassesPhoto?: () => Promise<string>;
   startAsk?: () => Promise<void>;
   stopAsk?: () => Promise<{ question: string; answer: string }>;
+  startListening?: () => Promise<void>;
+  stopListening?: () => Promise<{ text: string }>;
   speak?: (speechId: string, text: string) => Promise<void>;
   addListener?: (event: string, listener: (payload: never) => void) => Subscription;
 };
@@ -76,6 +78,11 @@ const native: NativeGlasses | null =
   pkg?.default ?? (requireOptionalNativeModule('Glasses') as NativeGlasses | null);
 
 export const glassesAvailable = native != null;
+
+/** True when this dev build's Swift module has a function (older builds may predate it). */
+export function glassesHas(fn: keyof NativeGlasses): boolean {
+  return typeof native?.[fn] === 'function';
+}
 
 function missing(fn: string): Error {
   return new Error(
@@ -105,6 +112,9 @@ export const Glasses = {
   captureGlassesPhoto: () => call('captureGlassesPhoto')(),
   startAsk: () => call('startAsk')(),
   stopAsk: () => call('stopAsk')(),
+  /** Mic capture for a memory; stopListening uploads to /api/transcribe and returns the words. */
+  startListening: () => call('startListening')(),
+  stopListening: () => call('stopListening')(),
   speak: (speechId: string, text: string) => call('speak')(speechId, text),
 };
 
