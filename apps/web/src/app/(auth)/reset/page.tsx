@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { AuthHeading } from "../_components/heading";
 import { ResetForm } from "../_components/forms";
 
-export const metadata: Metadata = { title: "Choose a new password · Recall" };
+export const metadata: Metadata = { title: "Choose a new password" };
 
 export default function ResetPage() {
   return (

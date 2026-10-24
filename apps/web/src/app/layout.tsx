@@ -15,7 +15,7 @@ const atkinson = Atkinson_Hyperlegible({
 });
 
 export const metadata: Metadata = {
-  title: "Recall",
+  title: { default: "Recall", template: "%s · Recall" },
   description: "A gentle memory companion on Ray-Ban Meta glasses, with a caregiver dashboard.",
 };
 
