@@ -21,12 +21,19 @@ model Patient {
   reminders  Reminder[]
 }
 
-/// A caregiver login. Each caregiver belongs to one patient.
+enum UserRole {
+  CAREGIVER
+  WEARER
+}
+
+/// A login. Each user belongs to one patient: a caregiver setting Recall up for someone else,
+/// or the wearer setting it up for themselves (in which case they are also the patient).
 model User {
   id              String    @id @default(cuid())
   email           String    @unique
   passwordHash    String
   name            String
+  role            UserRole  @default(CAREGIVER)
   emailVerifiedAt DateTime?
   patientId       String
   createdAt       DateTime  @default(now())

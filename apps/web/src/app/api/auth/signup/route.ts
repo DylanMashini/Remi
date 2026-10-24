@@ -11,7 +11,7 @@ import {
   toPublicUser,
 } from "@/lib/auth";
 import { appUrl, sendVerifyEmail } from "@/lib/email";
-import { Prisma } from "@/generated/prisma/client";
+import { Prisma, type UserRole } from "@/generated/prisma/client";
 import { VERIFY_TOKEN_HOURS, createAuthToken, jsonError, readJson, requestOrigin, str } from "../_shared";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -23,12 +23,15 @@ export async function POST(req: Request) {
   const email = normalizeEmail(body.email);
   const password = typeof body.password === "string" ? body.password : "";
   const name = str(body.name);
-  const patientName = str(body.patientName);
+  // "wearer" = setting Recall up for themselves (they are the patient); default is a caregiver.
+  const role: UserRole = str(body.role).toLowerCase() === "wearer" ? "WEARER" : "CAREGIVER";
+  const patientName = role === "WEARER" ? str(body.patientName) || name : str(body.patientName);
 
   if (!EMAIL_RE.test(email)) return jsonError("Enter a valid email address.", 400);
   if (password.length < MIN_PASSWORD_LENGTH) return jsonError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`, 400);
   if (!name) return jsonError("Enter your name.", 400);
   if (!patientName) return jsonError("Enter the name of the person you care for.", 400);
+
 
   const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   if (existing) return jsonError("An account with this email already exists.", 409);
@@ -39,7 +42,7 @@ export async function POST(req: Request) {
   try {
     user = await prisma.$transaction(async (tx) => {
       const patient = await tx.patient.create({ data: { name: patientName } });
-      return tx.user.create({ data: { email, passwordHash, name, patientId: patient.id } });
+      return tx.user.create({ data: { email, passwordHash, name, role, patientId: patient.id } });
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -48,8 +51,10 @@ export async function POST(req: Request) {
     throw error;
   }
 
-  const { token, expiresAt } = await createSession(user.id, "WEB");
-  (await cookies()).set(SESSION_COOKIE, token, sessionCookieOptions(expiresAt, req));
+  // Same as login: `?client=device` returns a bearer token for the phone instead of a cookie.
+  const device = new URL(req.url).searchParams.get("client") === "device";
+  const { token, expiresAt } = await createSession(user.id, device ? "DEVICE" : "WEB");
+  if (!device) (await cookies()).set(SESSION_COOKIE, token, sessionCookieOptions(expiresAt, req));
 
   // Email failure must never fail signup.
   try {
@@ -60,5 +65,5 @@ export async function POST(req: Request) {
     console.error("[auth/signup] verify email failed:", error);
   }
 
-  return Response.json({ user: toPublicUser(user) }, { status: 201 });
+  return Response.json(device ? { user: toPublicUser(user), token } : { user: toPublicUser(user) }, { status: 201 });
 }

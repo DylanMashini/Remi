@@ -85,7 +85,7 @@ export function unauthorized(error: unknown): Response {
 export const BCRYPT_COST = 12;
 export const MIN_PASSWORD_LENGTH = 8;
 
-export type PublicUser = Pick<User, "id" | "email" | "name" | "patientId" | "emailVerifiedAt" | "createdAt">;
+export type PublicUser = Pick<User, "id" | "email" | "name" | "role" | "patientId" | "emailVerifiedAt" | "createdAt">;
 
 /** The only user shape that may leave the server. Never includes passwordHash. */
 export function toPublicUser(user: User): PublicUser {
@@ -93,6 +93,7 @@ export function toPublicUser(user: User): PublicUser {
     id: user.id,
     email: user.email,
     name: user.name,
+    role: user.role,
     patientId: user.patientId,
     emailVerifiedAt: user.emailVerifiedAt,
     createdAt: user.createdAt,
