@@ -46,9 +46,12 @@ pnpm ios:device        # build + install the dev client on the iPhone (needs a s
 pnpm start             # Metro for later JS-only changes
 ```
 
-In the app, sign in with backend URL `http://<Mac LAN IP>:3000` (`ipconfig getifaddr en0`; use the
-phone hotspot, never venue Wi-Fi). On the Live tab, "No glasses? Start with the phone camera" runs the
-same pipeline on Mock Device Kit.
+The phone finds the backend through `EXPO_PUBLIC_BACKEND_URL` in `apps/mobile/.env.local` (copy
+`apps/mobile/.env.example`): `http://<Mac LAN IP>:3000` (`ipconfig getifaddr en0`; use the phone
+hotspot, never venue Wi-Fi) or the ngrok tunnel. It is read when Metro bundles, so restart Metro after
+changing it; there is no URL field in the app. First launch walks through onboarding (who will wear the
+glasses, then create an account) or sign-in. On the Live tab, "No glasses here? Use the phone camera"
+runs the same pipeline on Mock Device Kit.
 
 Caregiver dashboard: `http://<host>:3000/` (Overview, People, Reminders) and `/live` for the projector.
 
@@ -87,6 +90,6 @@ For the demo, run the production server (`pnpm --filter web build && pnpm --filt
 
 ## Notes
 
-- The phone can't reach `localhost`. Use your Mac's LAN IP or an ngrok tunnel for the backend URL.
+- The phone can't reach `localhost`. Use your Mac's LAN IP or an ngrok tunnel in `EXPO_PUBLIC_BACKEND_URL`.
 - Add packages to the mobile app with `pnpm exec expo install <pkg>` (picks SDK-compatible versions), and to the web app with `pnpm --filter web add <pkg>`.
 - `nodeLinker: hoisted` in `pnpm-workspace.yaml` is intentional: some React Native native libraries still break with pnpm's isolated layout.

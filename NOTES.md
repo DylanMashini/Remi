@@ -13,10 +13,20 @@
 - Oct 24: In-band glasses mic audio needs the `.microphone` DAT permission and `audioCodec: .pcm(...)` on `StreamConfiguration`; MockDeviceKit never delivers audio frames. The module falls back to AVAudioEngine on the phone mic (play-and-record, A2DP-only options so output stays hi-fi) if no in-band audio arrives within 4 s.
 - Oct 24: `MWDATMockDevice.framework` contains `display-preview/preview.js`; `expo lint` on `modules/` lints it (1.6k errors). Ignore `modules/glasses/ios/Frameworks/**`.
 
+- Oct 24 (mobile UI pass): the bundled React Compiler lint rejects `useRef(new Animated.Value(0)).current` read in render ("Cannot access refs during render"); hold the value in `useState(() => new Animated.Value(0))` instead. It also rejects `Date.now()` anywhere reachable from render, including inside a handler defined in the component; sample "now" into state on a timer.
+- Oct 24: `expo start --web` cannot server-render this app: `@expo/ui/swift-ui` (used for the reminder date picker) has no web implementation and throws `requireNativeViewManager is not available on web` during SSR. Web is not a target, so the UI is verified on the device only.
+- Oct 24: no iOS simulator runtime is installed on the dev Mac, so simulator builds are not an option for UI checks; JS changes are checked with `tsc`, `expo lint`, and `expo export --platform ios`, then hot-reloaded on the phone.
+- Oct 24: the native stack `formSheet` + `fitToContents` presentation was avoided for the reminder sheet: with a `flex: 1` SafeAreaView root the detent has no intrinsic height to fit. Plain `modal` is reliable.
+- Oct 24 (Remember feature): expo-router native tabs take `index` as the initial tab, so making Today the default meant renaming `(tabs)/today.tsx` to `index.tsx` and the Live screen to `live.tsx` (no `initialRouteName` plumbing). `router.navigate('/(tabs)/remember')` works from any tab.
+- Oct 24: Prisma 7's `migrate dev` is interactive; `migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script -o prisma/migrations/<ts>_<name>/migration.sql` then `migrate deploy` is the non-interactive path (used for `20261024223000_remember`). Adding a value to a Postgres enum (`EventType.PRACTICE`) is a plain `ALTER TYPE ... ADD VALUE`.
+- Oct 24: The Swift module gained `startListening`/`stopListening` (same `AudioCapture.startAsk/stopAsk` path, posts to `/api/transcribe`). Native change: the dev client must be rebuilt (`pnpm prebuild`, then the xcodebuild/devicectl commands in HANDOFF.md). Until then `glassesHas('startListening')` is false and the Remember screen falls back to typing.
+
 ## Decisions
 
 - Backend is Next.js route handlers; face embeddings run in a Python sidecar (InsightFace buffalo_l) because Node face libraries were less reliable.
 - All image/audio bytes travel Swift → Next via URLSession. JS never touches frames, to avoid the JS/Swift bridge cost.
+- The phone's backend URL is a build-time env var (`EXPO_PUBLIC_BACKEND_URL`), not a setting: the wearer never configures anything and a URL field made the app look like a dev tool.
+- Accounts carry a role (caregiver vs wearer) chosen during onboarding. Same data model either way; the wearer path just names the patient after the user and switches the copy to second person.
 - Local Postgres (Docker) for dev and demo; laptop backend on phone hotspot, never venue Wi-Fi.
 - Face sidecar: InsightFace/onnxruntime wheels lag new Pythons, so `apps/face` pins Python 3.12 via uv (system is 3.14). buffalo_l (~280 MB) downloads to `~/.insightface` on first start; CPU provider is ~50 ms per 504x896 frame on the Mac, so CoreML was not needed.
 
@@ -41,4 +51,5 @@
 - Tailwind v4: an unlayered `a { color: ... }` in globals.css beats every utility (utilities live in `@layer utilities`), so `text-white` on a link-button rendered invisible. Put element defaults in `@layer base`.
 - `react-hooks/set-state-in-effect` (eslint-config-next 16) flags calling any setState-ing function from an effect body, even async ones. Kick off fetches as `promise.then(setX)` and do per-submit values (tz offset) inside the form action wrapper instead.
 - Route handlers with a catch-all `try/catch` swallowed Next's prerender bail-out during `next build` (logged as `[api] unexpected error ... needs to bail out of prerendering`). Fix: `unstable_rethrow(err)` from `next/navigation` first thing in the shared `errorResponse`.
+- Adding the first dynamic page route (`/people/[id]`) made `next build` fail with `CLIENT_HOOK_DYNAMIC`: `usePathname` in the shared sidebar nav suspends while the static shell for a route with dynamic params is prerendered. Wrap the nav in `<Suspense>` in the layout (per the cache-components migration guide).
 - Dashboard pages: the session read lives in an async child behind `<Suspense>` (cookies outside a boundary is a build error with cacheComponents); mutations call `refresh()` from `next/cache`.

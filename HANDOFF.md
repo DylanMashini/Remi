@@ -37,6 +37,7 @@ Expo JS UI ── small values only (config, ids, text, events) ── Swift mod
 | Next does the matching, not the sidecar | Embeddings are stored in Postgres as `FaceSample.embedding Float[]`. `lib/match.ts` caches them per patient, compares by dot product (vectors are L2-normalized), and matches at ≥ 0.5. |
 | **All bytes go Swift → Next directly** | User requirement: crossing the JS/Swift bridge is expensive. Frames, enrollment photos, ask audio, ambient audio and TTS downloads all use `URLSession` in Swift. JS only passes file URIs, IDs and text. The integration agent checked this with a grep. |
 | Swift speaks `speak` from `/api/frames` responses itself | No JS round trip, so recognition can be spoken within 2 s. It still emits `onFrameResult` so the screen shows boxes and the spoken line. |
+| Accounts have a `role`: `CAREGIVER` (default; sets up for someone else, the Patient gets their name) or `WEARER` (sets up for themselves; the Patient is created with the user's own name). Mobile onboarding asks this first; copy adapts ("Ruth's glasses" vs "your glasses"). | Added Oct 24 evening with migration `user_role`. The web signup still creates caregivers. |
 | Auth: email + password | bcryptjs at cost 12. Sessions live in the DB, and only SHA-256 hashes of tokens are stored. Web uses the `recall_session` httpOnly cookie; the phone uses `Authorization: Bearer` (a DEVICE session, kept in the iOS Keychain). Resend sends verify and reset emails; with no key, the link is printed to the server log. |
 | Files: Vercel Blob (private) with a `File` row per object | User requirement. The UI loads photos only through the authed `/api/files/[id]`. With no `BLOB_READ_WRITE_TOKEN`, files go to `apps/web/.cache/blobs` (local fallback, which is what currently runs). |
 | Frames are never stored | Privacy decision from CLAUDE.md. The old `Capture` table was dropped. Enrollment photos are rotated upright and their EXIF/GPS data is stripped. |
@@ -80,11 +81,16 @@ Seed (`pnpm --filter web db:seed`): patient "Ruth", login **demo@recall.local / 
   - `GlassesPreviewView.swift`, `GlassesAppDelegateSubscriber.swift` (the `memoryaid://` callback from Meta AI).
   - The DAT SDK 1.0.1 frameworks (Core, Camera, MockDevice) are downloaded by `ios/scripts/fetch-dat.sh` during `pod install`. They are gitignored and are not an SPM dependency.
 - `apps/mobile/src/`:
-  - `app/sign-in.tsx`, and `app/(tabs)/` with Live, Enroll, People, Settings.
+  - `app/(auth)/`: onboarding (`index` welcome, `who` picks wearer vs caregiver, `create`, `sign-in`).
+  - `app/(tabs)/`: Live (`index`), Today (timeline + reminders), People, Settings.
+  - `app/add-person.tsx` and `app/add-reminder.tsx` (modal sheets), `app/person/[id].tsx` (detail + remove).
+  - `components/ui.tsx`: the UI kit (type, Button, Field, Group/Row, Notice, StatusPill, Avatar, chrome).
+  - `constants/theme.ts`: tokens and type scale. `lib/api.ts`: typed caregiver calls.
   - `lib/glasses.ts`: a safe wrapper around the module.
-  - `lib/session.tsx`: token in secure-store, then `Glasses.configure`.
+  - `lib/session.tsx`: token + account in secure-store, `/api/auth/me` check on launch, then `Glasses.configure`.
+    The backend URL is `BACKEND_URL` from `EXPO_PUBLIC_BACKEND_URL` only; no in-app override.
   - `lib/feed.ts`: event feed plus the 15 s reminder poller.
-  - The Live tab has a link, "No glasses? Start with the phone camera", which calls `startStream({mock:true})`.
+  - The Live tab's "No glasses here? Use the phone camera" calls `startStream({mock:true})`.
 
 ## Running it (current dev setup)
 
@@ -98,7 +104,7 @@ ngrok http 3000                              # https://5c13-130-203-75-49.ngrok-
 cd apps/mobile && npx expo start --dev-client --tunnel ngrok   # Metro via @expo/ngrok (Expo's signed tunnel failed)
 ```
 
-- **Backend URL on the phone:** the default comes from `EXPO_PUBLIC_BACKEND_URL` in `apps/mobile/.env.local` (gitignored), currently the ngrok URL.
+- **Backend URL on the phone:** fixed at bundle time from `EXPO_PUBLIC_BACKEND_URL` in `apps/mobile/.env.local` (gitignored; template in `.env.example`), currently the ngrok URL. There is no URL field in the app anymore.
 - **Email links:** `APP_URL` in `apps/web/.env` is also the ngrok URL.
 - **If the ngrok URL changes:** update both values, then restart Metro and `next start`.
 - **Before the demo:** the user plans to deploy behind a real domain, then switch both values to it.
@@ -130,6 +136,25 @@ None are set yet, except that `APP_URL` was added. Every feature that needs a ke
 | `GEMINI_API_KEY` | Nothing yet: no code uses it |
 
 Optional overrides: `ELEVENLABS_MODEL_ID`, `ELEVENLABS_STT_MODEL`, `OPENAI_STT_MODEL`, `APP_TIME_ZONE`, `PLACE`, `FACE_URL`, `FACE_PROVIDERS`. Restart `next start` after editing `.env`.
+
+## Remember (added Oct 24 evening)
+
+Duolingo-shaped, but never a quiz. The phone's **Remember** tab shows one enrolled face at a time
+and asks "Do you know who this is?" with two answers: **Yes, I know them** (then "Tell me about
+Sarah", mic capture through the Swift module → `/api/transcribe`, the words shown back as a quote,
+**Keep this memory**) or **Tell me who it is** (plays the exact introduction through the glasses).
+Every step is a `PRACTICE` event. Kept memories (`Memory` table) are distilled by Claude into one
+second-person sentence (`calloutText`) and the newest one switched on is appended to the spoken
+line for that person (`knownLine` in `lib/match.ts`). Name, relationship, note, and each memory's
+sentence and on/off switch are editable on the phone (person screen → Edit, memory rows, sheets
+`edit-person`, `edit-memory`) and on the web (`/people/[id]`). The web also has `/remember`
+(visits + newest memories) and a card on the overview. **Today is now the default tab**
+(`(tabs)/index.tsx`); Live moved to `(tabs)/live.tsx`.
+
+Needs before it is demo-ready: a **native rebuild** for the new `startListening`/`stopListening`
+functions (typing works without it), `ANTHROPIC_API_KEY` for good callout sentences (local
+fallback otherwise), and an STT key for voice. `next build && next start` must be rerun for the
+new routes.
 
 ## Next steps, in priority order
 
