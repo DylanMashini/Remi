@@ -27,8 +27,11 @@ Pod::Spec.new do |s|
 
   s.dependency 'ExpoModulesCore'
   s.vendored_frameworks = dat_frameworks.map { |f| "Frameworks/#{f}.xcframework" }
-  s.frameworks = 'AVFoundation', 'Speech', 'Security'
+  s.frameworks = 'AVFoundation', 'Speech', 'Security', 'Vision', 'CoreML', 'Accelerate'
 
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.source_files = '*.{h,m,mm,swift}'
+  # Precompiled Core ML face embedder (scripts/README.md). Shipped compiled because CocoaPods'
+  # resource copy step does not run coremlcompiler on .mlpackage files.
+  s.resource_bundles = { 'GlassesModels' => ['Models/FaceEmbedder.mlmodelc'] }
 end

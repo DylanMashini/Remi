@@ -78,6 +78,16 @@ public final class GlassesModule: Module {
       try await GlassesController.shared.stopListening()
     }
 
+    // On-device recognition (Core ML) instead of POST /api/frames. Persisted; throws if the model is missing.
+    AsyncFunction("setLocalRecognition") { (enabled: Bool) async throws -> [String: Any] in
+      try await GlassesController.shared.setLocalRecognition(enabled)
+      return await GlassesController.shared.status()
+    }
+
+    AsyncFunction("syncRoster") { () async throws -> [String: Any] in
+      try await GlassesController.shared.syncRoster()
+    }
+
     AsyncFunction("speak") { (speechId: String, text: String) async throws in
       await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
         Task { @MainActor in
@@ -100,9 +110,21 @@ enum Enroll {
     form.addField("name", name)
     if let r = p.relationship, !r.isEmpty { form.addField("relationship", r) }
     if let n = p.notes, !n.isEmpty { form.addField("notes", n) }
+    var localBoxes: [[Int]] = []
+    let local = LocalRecognition.shared.enabled
     for (i, uri) in p.photoUris.enumerated() {
       let jpeg = try loadJPEG(uri)
+      if local, let img = UIImage(data: jpeg) {
+        // Check for a face on the phone so enrollment does not depend on the Python sidecar.
+        let faces = try FaceRecognizer.shared.detectAndEmbed(img, maxFaces: 1)
+        guard let face = faces.first else { throw GlassesError("No face found in photo \(i + 1)") }
+        localBoxes.append(face.box)
+      }
       form.addFile("photos", filename: "photo\(i).jpg", mime: "image/jpeg", data: jpeg)
+    }
+    if local, localBoxes.count == p.photoUris.count,
+       let json = try? JSONSerialization.data(withJSONObject: localBoxes), let s = String(data: json, encoding: .utf8) {
+      form.addField("faces", s)  // server uses these boxes if its face service is unreachable
     }
     let body = form.finish()
     let req = try BackendClient.shared.request("/api/people", method: "POST", contentType: form.contentType, body: body, timeout: 60)
@@ -117,6 +139,10 @@ enum Enroll {
     let personId = person?["id"] as? String ?? ""
     let samples: Int
     if let n = obj["samples"] as? Int { samples = n } else if let arr = obj["samples"] as? [Any] { samples = arr.count } else { samples = 0 }
+    if local {
+      // The new face is matched on the phone: refresh the local roster right away.
+      do { _ = try await GlassesController.shared.syncRoster() } catch { NSLog("[Glasses] roster sync after enroll failed: \(error)") }
+    }
     return ["personId": personId, "samples": samples]
   }
 
