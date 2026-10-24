@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+
+# Expo/React Native native builds are most reliable with a flat node_modules.
+# SDK 54+ supports isolated installs, but some RN libraries still break with them.
+nodeLinker: hoisted
+
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - esbuild
+  - prisma

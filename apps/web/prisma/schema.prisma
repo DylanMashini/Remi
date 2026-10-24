@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// The person wearing the glasses.
+model Patient {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  people   Person[]
+  captures Capture[]
+}
+
+/// Someone the patient should recognize (family, caregivers, friends).
+model Person {
+  id           String   @id @default(cuid())
+  patientId    String
+  name         String
+  relationship String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  patient  Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  captures Capture[]
+
+  @@index([patientId])
+}
+
+/// A photo taken by the glasses, optionally matched to a known person.
+model Capture {
+  id         String   @id @default(cuid())
+  patientId  String
+  personId   String?
+  imagePath  String
+  capturedAt DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  person  Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, capturedAt])
+}

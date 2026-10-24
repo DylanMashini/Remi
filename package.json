@@ -1,0 +1,15 @@
+{
+  "name": "memory-aid",
+  "private": true,
+  "packageManager": "pnpm@10.22.0",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:mobile": "pnpm --filter mobile start",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
