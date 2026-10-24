@@ -28,7 +28,7 @@ Swift module (`apps/mobile/modules/glasses`). Update this file before changing e
 
 | Route | Body | Response |
 | --- | --- | --- |
-| `POST /api/auth/signup` | `{email, password, name, patientName}` | `201 {user}`; sets cookie; creates User + Patient; sends verify email (Resend) |
+| `POST /api/auth/signup` | `{email, password, name, patientName?, role?}` | `201 {user}`; sets cookie (with `?client=device`: `201 {user, token}`, no cookie); creates User + Patient; sends verify email (Resend). `role` is `"caregiver"` (default; `patientName` required) or `"wearer"` (setting up for themselves; `patientName` defaults to `name`) |
 | `POST /api/auth/login` | `{email, password}` | `200 {user}` + cookie. With `?client=device`: `200 {user, token}` and no cookie (kind DEVICE) |
 | `POST /api/auth/logout` | none | `204`; deletes the session (cookie or bearer) |
 | `POST /api/auth/forgot` | `{email}` | `204` always (no account enumeration); emails a reset link if the user exists |
@@ -37,6 +37,10 @@ Swift module (`apps/mobile/modules/glasses`). Update this file before changing e
 | `GET /api/auth/me` | | `200 {user, patient: {id, name}}` or `401`; phone uses it to check a saved token |
 
 Passwords: bcryptjs cost 12, min 8 chars. Tokens: `newToken()` / `hashToken()` from `@/lib/auth`.
+Public user shape everywhere: `{id, email, name, role: "CAREGIVER" | "WEARER", patientId, emailVerifiedAt, createdAt}`.
+
+The phone's backend URL is fixed at build time from `EXPO_PUBLIC_BACKEND_URL` in `apps/mobile/.env.local`
+(see `apps/mobile/.env.example`); there is no in-app override.
 
 ## Glasses pipeline (called by Swift)
 
@@ -91,10 +95,45 @@ Each photo → face sidecar `/embed` → largest face → `FaceSample`; photo st
 `apps/web/.cache/blobs`, `File.url = local:<path>`); first photo also cropped/resized to a 160px `AVATAR`. Photos with no face are
 rejected with `422 {error, index}` before anything is saved. Response `201 {person, samples}`.
 
-### `GET /api/people` → `{people: [{id, name, relationship, notes, avatarUrl, samples, lastSeenAt}]}`
-`avatarUrl` is `/api/files/<avatarFileId>` or null.
+### `GET /api/people` → `{people: [Person]}`
+`Person = {id, name, relationship, notes, avatarUrl, photoUrl, samples, lastSeenAt, line, memoryCount, lastRememberedAt}`.
+`avatarUrl` is `/api/files/<avatarFileId>` or null; `photoUrl` is the first full enrollment photo
+(for the Remember portrait). `line` is the exact sentence the glasses say for this person.
 
-### `DELETE /api/people/[id]` → `204` (deletes blobs, files, samples; keeps events with personId nulled)
+### `GET /api/people/[id]` → `{person: Person & {memories: [Memory], visits: [{id, knew, at}]}}`
+### `PATCH /api/people/[id]` `{name?, relationship?, notes?}` (null clears) → `{person}`; invalidates the roster cache.
+### `DELETE /api/people/[id]` → `204` (deletes blobs, files, samples, memories; keeps events with personId nulled)
+
+## Remember (gentle practice; never scored, never corrected)
+
+The spoken line for a known person is `knownLine` in `lib/match.ts`:
+`This is {name}, your {relationship}. {notes} {memory}` where `memory` is the `calloutText` of the
+newest `Memory` with `useInCallout = true`. `lib/people.ts` and the web/mobile `knownLine` /
+`introductionLine` helpers build the same string. Any change to a person or memory calls
+`invalidateRoster(patientId)`.
+
+`Memory = {id, personId, text, calloutText, useInCallout, source, createdAt, updatedAt}`;
+`source` is `WEARER_VOICE | WEARER_TYPED | CAREGIVER`. `text` is the speaker's own words, kept
+as said. `calloutText` is one second-person sentence (≤ 160 chars) distilled by Claude
+(`lib/memories.ts`, `claude-sonnet-5-5`, JSON `{callout, usable}`); without `ANTHROPIC_API_KEY`
+the first sentence of `text` is used and `usable` is a length check.
+
+### `POST /api/remember` `{personId, knew: boolean}` → `{line, speechId}`
+Logs `PRACTICE` with `data: {kind: "visit", knew, speechId}`. When `knew` is false also logs
+`SPOKEN` (`source: "remember"`); the phone plays `speechId` through the glasses.
+
+### `POST /api/transcribe` body raw `audio/wav` → `{text}`
+Speech-to-text only (same STT chain as ask). Nothing is logged; the words persist only if kept.
+
+### `POST /api/people/[id]/memories` `{text, calloutText?, source?, useInCallout?}` → `201 {memory, usable}`
+Distills `text` unless `calloutText` is given. `useInCallout` defaults to `usable`. Logs
+`PRACTICE` with `data: {kind: "memory", memoryId, source, useInCallout}`.
+
+### `PATCH /api/memories/[id]` `{text?, calloutText?, useInCallout?}` → `{memory}`
+### `DELETE /api/memories/[id]` → `204`
+
+Event type `PRACTICE` was added to `EventType`. Caregiver web: `/remember` (visits and newest
+memories), `/people/[id]` (introduction editor, memories with "say this" toggles, visit history).
 
 ### `GET /api/files/[id]` → streams the blob (authed, scoped to patient). Never expose raw blob URLs.
 
@@ -135,6 +174,8 @@ enrollPerson(p: { name: string; relationship?: string; notes?: string; photoUris
 captureGlassesPhoto(): Promise<string>       // file:// URI of a glasses photo
 startAsk(): Promise<void>                    // begins mic capture
 stopAsk(): Promise<{ question: string; answer: string }>  // uploads to /api/ask, speaks answer
+startListening(): Promise<void>              // begins mic capture for a Remember memory
+stopListening(): Promise<{ text: string }>   // uploads to /api/transcribe, returns the words (nothing spoken)
 speak(speechId: string, text: string): Promise<void>      // downloads /api/speech/id, plays over A2DP
 
 type GlassesStatus = {

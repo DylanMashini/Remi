@@ -5,7 +5,8 @@ export const MATCH_THRESHOLD = 0.5;
 const KNOWN_DEBOUNCE_MS = 5 * 60 * 1000;
 const UNKNOWN_DEBOUNCE_MS = 60 * 1000;
 
-type RosterPerson = { id: string; name: string; relationship: string | null; notes: string | null };
+/** `memory` is the newest memory marked "say this", already distilled into one sentence. */
+export type RosterPerson = { id: string; name: string; relationship: string | null; notes: string | null; memory: string | null };
 type Sample = { person: RosterPerson; embedding: Float32Array };
 
 // In-memory caches live on globalThis so they survive dev hot reloads.
@@ -21,10 +22,27 @@ async function loadSamples(patientId: string): Promise<Sample[]> {
     where: { person: { patientId } },
     select: {
       embedding: true,
-      person: { select: { id: true, name: true, relationship: true, notes: true } },
+      person: {
+        select: {
+          id: true,
+          name: true,
+          relationship: true,
+          notes: true,
+          memories: { where: { useInCallout: true }, orderBy: { createdAt: "desc" }, take: 1, select: { calloutText: true } },
+        },
+      },
     },
   });
-  return rows.map((r) => ({ person: r.person, embedding: Float32Array.from(r.embedding) }));
+  return rows.map((r) => ({
+    person: {
+      id: r.person.id,
+      name: r.person.name,
+      relationship: r.person.relationship,
+      notes: r.person.notes,
+      memory: r.person.memories[0]?.calloutText ?? null,
+    },
+    embedding: Float32Array.from(r.embedding),
+  }));
 }
 
 function samplesFor(patientId: string): Promise<Sample[]> {
@@ -37,7 +55,7 @@ function samplesFor(patientId: string): Promise<Sample[]> {
   return p;
 }
 
-/** Call after enrolling, editing, or deleting anyone in this patient's roster. */
+/** Call after enrolling, editing, or deleting anyone in this patient's roster, or changing their memories. */
 export function invalidateRoster(patientId: string) {
   sampleCache.delete(patientId);
 }
@@ -109,12 +127,16 @@ function sentence(s: string): string {
   return /[.!?]$/.test(t) ? t : `${t}.`;
 }
 
-/** "This is {name}, your {relationship}. {notes}" with missing parts omitted. */
-export function knownLine(p: Pick<RosterPerson, "name" | "relationship" | "notes">): string {
+/**
+ * "This is {name}, your {relationship}. {notes} {memory}" with missing parts omitted.
+ * The same words every time for the same person: consistency is comfort.
+ */
+export function knownLine(p: { name: string; relationship?: string | null; notes?: string | null; memory?: string | null }): string {
   const rel = p.relationship?.trim();
-  const first = rel ? `This is ${p.name.trim()}, your ${rel}.` : `This is ${p.name.trim()}.`;
-  const notes = p.notes ? sentence(p.notes) : "";
-  return notes ? `${first} ${notes}` : first;
+  const parts = [rel ? `This is ${p.name.trim()}, your ${rel}.` : `This is ${p.name.trim()}.`];
+  if (p.notes) parts.push(sentence(p.notes));
+  if (p.memory) parts.push(sentence(p.memory));
+  return parts.filter(Boolean).join(" ");
 }
 
 export const UNKNOWN_LINE = "Someone new is here.";

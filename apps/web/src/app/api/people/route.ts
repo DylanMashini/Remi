@@ -2,8 +2,9 @@ import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { embedFaces, type DetectedFace } from "@/lib/face";
-import { invalidateRoster } from "@/lib/match";
+import { invalidateRoster, knownLine } from "@/lib/match";
 import { deleteBlobs, saveFile } from "@/lib/storage";
+import { listPeople } from "@/lib/people";
 import type { File as FileRow } from "@/generated/prisma/client";
 import { errorResponse, HttpError } from "../_lib/http";
 
@@ -14,30 +15,7 @@ const AVATAR_SIZE = 160;
 export async function GET(req: Request) {
   try {
     const { patientId } = await requireSession(req);
-    const [people, lastSeen] = await Promise.all([
-      prisma.person.findMany({
-        where: { patientId },
-        orderBy: { createdAt: "asc" },
-        include: { _count: { select: { faceSamples: true } } },
-      }),
-      prisma.event.groupBy({
-        by: ["personId"],
-        where: { patientId, type: "RECOGNITION", personId: { not: null } },
-        _max: { createdAt: true },
-      }),
-    ]);
-    const seen = new Map(lastSeen.map((r) => [r.personId, r._max.createdAt]));
-    return Response.json({
-      people: people.map((p) => ({
-        id: p.id,
-        name: p.name,
-        relationship: p.relationship,
-        notes: p.notes,
-        avatarUrl: p.avatarFileId ? `/api/files/${p.avatarFileId}` : null,
-        samples: p._count.faceSamples,
-        lastSeenAt: seen.get(p.id)?.toISOString() ?? null,
-      })),
-    });
+    return Response.json({ people: await listPeople(patientId) });
   } catch (error) {
     return errorResponse(error);
   }
@@ -132,8 +110,12 @@ export async function POST(req: Request) {
             relationship: updated.relationship,
             notes: updated.notes,
             avatarUrl: `/api/files/${avatar.id}`,
+            photoUrl: `/api/files/${saved[0].id}`,
             samples: samples.length,
             lastSeenAt: null,
+            line: knownLine({ ...updated, memory: null }),
+            memoryCount: 0,
+            lastRememberedAt: null,
           },
           samples: samples.length,
         },

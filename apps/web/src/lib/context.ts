@@ -45,7 +45,12 @@ export async function buildContext(patientId: string): Promise<string> {
     prisma.patient.findUnique({ where: { id: patientId }, select: { name: true } }),
     prisma.person.findMany({
       where: { patientId },
-      select: { name: true, relationship: true, notes: true },
+      select: {
+        name: true,
+        relationship: true,
+        notes: true,
+        memories: { orderBy: { createdAt: "desc" }, take: 3, select: { calloutText: true, useInCallout: true } },
+      },
       orderBy: { name: "asc" },
     }),
     prisma.event.findMany({
@@ -81,6 +86,7 @@ export async function buildContext(patientId: string): Promise<string> {
   if (roster.length === 0) lines.push("- none yet");
   for (const p of roster) {
     lines.push(`- ${p.name}${p.relationship ? `, ${p.relationship}` : ""}${p.notes ? `. Note: ${p.notes}` : ""}`);
+    for (const m of p.memories) lines.push(`  - What the wearer remembers about them: ${m.calloutText}`);
   }
 
   lines.push("", "People recognized today:");

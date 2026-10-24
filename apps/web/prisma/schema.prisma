@@ -19,6 +19,7 @@ model Patient {
   files      File[]
   events     Event[]
   reminders  Reminder[]
+  memories   Memory[]
 }
 
 enum UserRole {
@@ -42,6 +43,7 @@ model User {
   sessions   Session[]
   authTokens AuthToken[]
   reminders  Reminder[]
+  memories   Memory[]
 
   @@index([patientId])
 }
@@ -101,7 +103,36 @@ model Person {
   files       File[]       @relation("PersonFiles")
   faceSamples FaceSample[]
   events      Event[]
+  memories    Memory[]
 
+  @@index([patientId])
+}
+
+enum MemorySource {
+  WEARER_VOICE
+  WEARER_TYPED
+  CAREGIVER
+}
+
+/// Something the wearer (or a caregiver) remembers about a person. `text` is their own words;
+/// `calloutText` is the one short sentence the glasses may say after the introduction.
+model Memory {
+  id           String       @id @default(cuid())
+  patientId    String
+  personId     String
+  text         String
+  calloutText  String
+  useInCallout Boolean      @default(true)
+  source       MemorySource
+  createdById  String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  person    Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([personId, createdAt])
   @@index([patientId])
 }
 
@@ -153,6 +184,7 @@ enum EventType {
   ANSWER
   REMINDER
   SPOKEN
+  PRACTICE
 }
 
 /// The memory log. Everything the glasses see, hear, and say lands here.
