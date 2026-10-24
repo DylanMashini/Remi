@@ -5,26 +5,31 @@ import { useGlassesFeed, useReminderPoller } from '@/lib/feed';
 import { useSession } from '@/lib/session';
 
 export default function TabsLayout() {
-  const { backendUrl, token } = useSession();
+  const { token } = useSession();
   useGlassesFeed();
-  useReminderPoller(backendUrl, token);
+  useReminderPoller(token);
 
   return (
     <NativeTabs
       backgroundColor={Colors.surface}
       tintColor={Colors.harborDeep}
       iconColor={{ default: Colors.inkSoft, selected: Colors.harborDeep }}
+      disableTransparentOnScrollEdge
       labelStyle={{
-        default: { color: Colors.inkSoft, fontFamily: Fonts.bodyBold },
-        selected: { color: Colors.harborDeep, fontFamily: Fonts.bodyBold },
+        default: { color: Colors.inkSoft, fontFamily: Fonts.bodyBold, fontSize: 11 },
+        selected: { color: Colors.harborDeep, fontFamily: Fonts.bodyBold, fontSize: 11 },
       }}>
       <NativeTabs.Trigger name="index">
+        <NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'sun.max', selected: 'sun.max.fill' }} />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="live">
         <NativeTabs.Trigger.Label>Live</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'eyeglasses', selected: 'eyeglasses' }} />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="enroll">
-        <NativeTabs.Trigger.Label>Enroll</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: 'person.crop.circle.badge.plus', selected: 'person.crop.circle.fill.badge.plus' }} />
+      <NativeTabs.Trigger name="remember">
+        <NativeTabs.Trigger.Label>Remember</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'photo.on.rectangle', selected: 'photo.fill.on.rectangle.fill' }} />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="people">
         <NativeTabs.Trigger.Label>People</NativeTabs.Trigger.Label>

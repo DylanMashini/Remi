@@ -1,44 +1,48 @@
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
+  Animated,
+  Easing,
   type LayoutChangeEvent,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Banner, Button, Chip } from '@/components/ui';
-import { Colors, Fonts, Radii, Spacing } from '@/constants/theme';
 import {
-  clearError,
-  dismissReminder,
-  pushSpoken,
-  reportError,
-  setStatus,
-  useFeed,
-  type SpokenLine,
-} from '@/lib/feed';
-import { errorMessage, Glasses, GlassesPreviewView, type AudioRoute } from '@/lib/glasses';
+  BottomBar,
+  Button,
+  Group,
+  Icon,
+  IconButton,
+  Notice,
+  Row,
+  Screen,
+  StatusPill,
+  TextButton,
+  Wordmark,
+} from '@/components/ui';
+import { Colors, Fonts, Gutter, Radii, Shadow, Spacing, Type } from '@/constants/theme';
+import { clearError, dismissReminder, pushSpoken, reportError, setStatus, useFeed, type SpokenLine } from '@/lib/feed';
+import { timeOf } from '@/lib/format';
+import { errorMessage, Glasses, GlassesPreviewView, type GlassesStatus } from '@/lib/glasses';
+import { useSession, wearerName } from '@/lib/session';
 
 const FACE_TTL_MS = 1500;
 
-function audioChip(route: AudioRoute, portName: string | null) {
-  switch (route) {
-    case 'a2dp':
-      return <Chip tone="mist" dot label="Audio: Glasses" />;
-    case 'hfp':
-      return <Chip tone="mist" dot label="Audio: Glasses (call mode)" />;
-    case 'speaker':
-      return <Chip tone="attention" dot label="Audio: Phone speaker" />;
-    default:
-      return <Chip tone="attention" dot label={`Audio: ${portName ?? 'not glasses'}`} />;
+function statusPill(status: GlassesStatus, portName: string | null): { tone: 'good' | 'idle' | 'attention'; label: string } {
+  if (status.streaming && status.mock) return { tone: 'good', label: 'Phone camera' };
+  if (status.streaming && (status.audioRoute === 'speaker' || status.audioRoute === 'other')) {
+    return { tone: 'attention', label: portName && status.audioRoute === 'other' ? `Audio on ${portName}` : 'Audio on phone speaker' };
   }
+  if (status.connection === 'connected') return { tone: 'good', label: 'Glasses connected' };
+  if (status.connection === 'connecting') return { tone: 'idle', label: 'Connecting' };
+  return { tone: 'idle', label: 'Glasses not connected' };
 }
 
-function routeLabel(route?: string): { text: string; warn: boolean } | null {
+function routeText(route?: string): { text: string; warn: boolean } | null {
   if (!route) return null;
   const r = route.toLowerCase();
   if (r.includes('a2dp') || r.includes('hfp') || r.includes('bluetooth') || r.includes('glasses')) {
@@ -50,22 +54,43 @@ function routeLabel(route?: string): { text: string; warn: boolean } | null {
 
 const sourceLabel: Record<SpokenLine['source'], string> = {
   recognition: 'Recognized',
-  answer: 'Answer',
+  answer: 'Answered',
   reminder: 'Reminder',
 };
 
-function timeOf(ms: number) {
-  return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+/** A slow breathing dot for the listening state. Motion only while listening. */
+function Pulse() {
+  const [v] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(v, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [v]);
+  const scale = v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.6] });
+  const opacity = v.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] });
+  return (
+    <View style={styles.pulseWrap}>
+      <Animated.View style={[styles.pulseRing, { transform: [{ scale }], opacity }]} />
+      <View style={styles.pulseCore}>
+        <Icon name="mic.fill" size={18} color={Colors.surface} weight="bold" />
+      </View>
+    </View>
+  );
 }
 
 export default function LiveScreen() {
   const feed = useFeed();
+  const { account } = useSession();
   const { height } = useWindowDimensions();
   const [box, setBox] = useState({ w: 0, h: 0 });
   const [expiredFrameAt, setExpiredFrameAt] = useState(0);
   const [streamBusy, setStreamBusy] = useState(false);
   const [ask, setAsk] = useState<'idle' | 'listening' | 'thinking'>('idle');
-  const [qa, setQa] = useState<{ question: string; answer: string } | null>(null);
 
   // Hide boxes once no new frame result has arrived for FACE_TTL_MS.
   useEffect(() => {
@@ -76,8 +101,9 @@ export default function LiveScreen() {
   }, [feed.lastFrameAt]);
 
   const { status } = feed;
-  const connected = status.connection === 'connected';
   const facesFresh = feed.lastFrameAt > 0 && feed.lastFrameAt !== expiredFrameAt;
+  const who = wearerName(account);
+  const possessive = who === 'you' ? 'your' : `${who}'s`;
 
   // Aspect-fit mapping from frame pixels to the preview view.
   const fw = feed.frameWidth || 504;
@@ -91,16 +117,23 @@ export default function LiveScreen() {
     setBox({ w: width, h });
   };
 
-  const toggleStream = async (mock = false) => {
+  const startStream = async (mock = false) => {
     setStreamBusy(true);
     try {
-      if (status.streaming) {
-        await Glasses.stopStream();
-        setStatus({ ...status, streaming: false });
-      } else {
-        await Glasses.startStream(mock ? { mock: true } : undefined);
-        setStatus({ ...status, streaming: true, mock });
-      }
+      await Glasses.startStream(mock ? { mock: true } : undefined);
+      setStatus({ ...status, streaming: true, mock });
+    } catch (e) {
+      reportError(e);
+    } finally {
+      setStreamBusy(false);
+    }
+  };
+
+  const stopStream = async () => {
+    setStreamBusy(true);
+    try {
+      await Glasses.stopStream();
+      setStatus({ ...status, streaming: false });
     } catch (e) {
       reportError(e);
     } finally {
@@ -112,7 +145,6 @@ export default function LiveScreen() {
     if (ask === 'idle') {
       try {
         await Glasses.startAsk();
-        setQa(null);
         setAsk('listening');
       } catch (e) {
         reportError(e);
@@ -121,8 +153,7 @@ export default function LiveScreen() {
       setAsk('thinking');
       try {
         const r = await Glasses.stopAsk();
-        setQa(r);
-        if (r.answer) pushSpoken(r.answer, 'answer');
+        if (r.answer) pushSpoken(r.answer, 'answer', { question: r.question });
       } catch (e) {
         reportError(`Ask failed: ${errorMessage(e)}`);
       } finally {
@@ -132,252 +163,252 @@ export default function LiveScreen() {
   };
 
   const last = feed.spoken[0];
-  const lastRoute = routeLabel(last?.route);
+  const lastRoute = routeText(last?.route);
+  const pill = statusPill(status, feed.portName);
+  const viewfinderHeight = Math.max(300, Math.round(height * 0.42));
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <Screen edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.wordmark}>Recall</Text>
-        {status.mock ? <Chip tone="sand" label="Mock device" /> : null}
-      </View>
-      <View style={styles.chips}>
-        <Chip
-          tone={connected ? 'mist' : 'attention'}
-          dot
-          label={
-            connected
-              ? 'Glasses connected'
-              : status.connection === 'connecting'
-                ? 'Connecting…'
-                : 'Glasses not connected'
-          }
-        />
-        <Chip tone={status.streaming ? 'mist' : 'sand'} dot label={status.streaming ? 'Streaming' : 'Not streaming'} />
-        {audioChip(status.audioRoute, feed.portName)}
+        <Wordmark />
+        <StatusPill tone={pill.tone} label={pill.label} onPress={() => router.navigate('/(tabs)/settings')} />
       </View>
 
-      <View style={[styles.preview, { height: Math.round(height * 0.36) }]} onLayout={onLayout}>
-        {GlassesPreviewView ? (
-          <GlassesPreviewView style={StyleSheet.absoluteFill} />
-        ) : (
-          <View style={styles.previewEmpty}>
-            <Text style={styles.previewEmptyText}>Glasses preview is not in this build.</Text>
-          </View>
-        )}
-        {!status.streaming && GlassesPreviewView ? (
-          <View style={styles.previewEmpty} pointerEvents="none">
-            <Text style={styles.previewEmptyText}>Press Start to see what the glasses see.</Text>
-          </View>
-        ) : null}
-        {facesFresh && scale > 0
-          ? feed.faces.map((f, i) => {
-              const [x, y, w, h] = f.box;
-              const known = !!f.name;
-              const color = known ? Colors.apricot : Colors.attention;
-              return (
-                <View
-                  key={`${f.personId ?? 'u'}-${i}`}
-                  pointerEvents="none"
-                  style={[
-                    styles.faceBox,
-                    {
-                      left: offX + x * scale,
-                      top: offY + y * scale,
-                      width: w * scale,
-                      height: h * scale,
-                      borderColor: color,
-                    },
-                  ]}>
-                  <View
-                    style={[
-                      styles.faceLabel,
-                      { backgroundColor: known ? Colors.apricot : Colors.attentionBg },
-                    ]}>
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.faceLabelText, { color: known ? Colors.ink : Colors.attention }]}>
-                      {known ? f.name : 'Someone new'}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })
-          : null}
-      </View>
-
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.body}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.body}
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}>
         {feed.error ? (
-          <Banner tone="attention" title="Heads up" body={feed.error.message} onClose={clearError} />
+          <Notice tone="attention" title="Something needs attention" body={feed.error.message} onDismiss={clearError} />
         ) : null}
         {feed.reminder ? (
-          <Banner title="Reminder" body={feed.reminder.text} onClose={dismissReminder} />
+          <Notice tone="info" icon="bell.fill" title="Reminder spoken" body={feed.reminder.text} onDismiss={dismissReminder} />
         ) : null}
 
-        <View style={styles.lineCard}>
-          <Text style={styles.lineMeta}>
-            {last ? `${sourceLabel[last.source]} · ${timeOf(last.at)}` : 'Glasses said'}
-          </Text>
-          <Text style={styles.lineText} accessibilityLiveRegion="polite">
-            {last ? `“${last.text}”` : 'Nothing yet. When someone familiar walks up, their name appears here.'}
-          </Text>
-          {lastRoute ? (
-            <Text style={[styles.lineRoute, lastRoute.warn && { color: Colors.attention }]}>
-              {lastRoute.text}
-            </Text>
-          ) : null}
+        <View style={styles.card}>
+          <View style={[styles.viewfinder, { height: viewfinderHeight }]} onLayout={onLayout}>
+            {GlassesPreviewView ? <GlassesPreviewView style={StyleSheet.absoluteFill} /> : null}
+
+            {!status.streaming ? (
+              <View style={styles.resting} pointerEvents="none">
+                <Icon name="eyeglasses" size={40} color={Colors.nightText} weight="light" />
+                <Text style={styles.restingTitle}>
+                  {GlassesPreviewView ? 'The glasses are resting' : 'Preview is not in this build'}
+                </Text>
+                <Text style={styles.restingBody}>
+                  {GlassesPreviewView
+                    ? `Start to see what ${possessive} glasses see, and what they say.`
+                    : 'Rebuild the app with the glasses module to see the camera here.'}
+                </Text>
+              </View>
+            ) : null}
+
+            {status.streaming && !feed.lastFrameAt ? (
+              <View style={[styles.badge, styles.badgeTopLeft]}>
+                <Text style={styles.badgeText}>Waiting for the first frame</Text>
+              </View>
+            ) : status.streaming && status.mock ? (
+              <View style={[styles.badge, styles.badgeTopLeft]}>
+                <Icon name="iphone" size={12} color={Colors.nightText} weight="semibold" />
+                <Text style={styles.badgeText}>Phone camera</Text>
+              </View>
+            ) : null}
+
+            {facesFresh && scale > 0
+              ? feed.faces.map((f, i) => {
+                  const [x, y, w, h] = f.box;
+                  const known = !!f.name;
+                  return (
+                    <View
+                      key={`${f.personId ?? 'u'}-${i}`}
+                      pointerEvents="none"
+                      style={[
+                        styles.faceBox,
+                        {
+                          left: offX + x * scale,
+                          top: offY + y * scale,
+                          width: w * scale,
+                          height: h * scale,
+                          borderColor: known ? Colors.apricot : Colors.nightText,
+                        },
+                      ]}>
+                      <View style={[styles.faceLabel, { backgroundColor: known ? Colors.apricot : Colors.sand }]}>
+                        <Text numberOfLines={1} style={styles.faceLabelText}>
+                          {known ? f.name : 'Someone new'}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })
+              : null}
+          </View>
+
+          <View style={styles.words}>
+            {last ? (
+              <>
+                <View style={styles.meta}>
+                  <Text style={styles.metaText}>
+                    {sourceLabel[last.source]} at {timeOf(last.at)}
+                  </Text>
+                  {last.source === 'answer' && last.question ? (
+                    <Text style={styles.question} numberOfLines={2}>
+                      {who === 'you' ? 'You asked' : `${who} asked`}: {last.question}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={styles.spoken} accessibilityLiveRegion="polite">
+                  {last.text}
+                </Text>
+                {lastRoute ? (
+                  <View style={styles.route}>
+                    <Icon
+                      name={lastRoute.warn ? 'speaker.wave.2.fill' : 'eyeglasses'}
+                      size={14}
+                      color={lastRoute.warn ? Colors.attention : Colors.harborDeep}
+                      weight="semibold"
+                    />
+                    <Text style={[styles.routeText, lastRoute.warn && { color: Colors.attention }]}>{lastRoute.text}</Text>
+                  </View>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <Text style={styles.metaText}>Nothing said yet</Text>
+                <Text style={styles.spokenEmpty}>
+                  When someone {who === 'you' ? 'you know walks' : `${who} knows walks`} up, their name is spoken here.
+                </Text>
+              </>
+            )}
+          </View>
         </View>
 
         {ask === 'listening' ? (
-          <View style={styles.listening}>
-            <View style={styles.listeningDot} />
-            <View style={{ gap: Spacing.one, flex: 1 }}>
-              <Text style={styles.listeningTitle}>I&apos;m listening…</Text>
-              <Text style={styles.listeningSub}>Press again when the question is done.</Text>
+          <View style={styles.listening} accessibilityLiveRegion="polite">
+            <Pulse />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.listeningTitle}>Listening</Text>
+              <Text style={styles.listeningBody}>Ask the question out loud, then tap Done.</Text>
             </View>
           </View>
         ) : null}
 
-        {qa ? (
-          <View style={styles.qa}>
-            <Text style={styles.qaLabel}>Asked</Text>
-            <Text style={styles.qaQuestion}>{qa.question || '(no words heard)'}</Text>
-            <Text style={styles.qaLabel}>Answered</Text>
-            <Text style={styles.qaAnswer}>{qa.answer}</Text>
-          </View>
-        ) : null}
-
         {feed.spoken.length > 1 ? (
-          <View style={styles.history}>
-            <Text style={styles.qaLabel}>Earlier</Text>
-            {feed.spoken.slice(1, 6).map((l) => (
-              <Text key={l.id} style={styles.historyLine}>
-                <Text style={styles.historyTime}>{timeOf(l.at)}  </Text>
-                {l.text}
-              </Text>
+          <Group title="Earlier">
+            {feed.spoken.slice(1, 8).map((l) => (
+              <Row key={l.id} title={l.text} detail={sourceLabel[l.source]} value={timeOf(l.at)} valueTone="mute" />
             ))}
-          </View>
+          </Group>
         ) : null}
       </ScrollView>
 
-      {!status.streaming && !streamBusy ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => toggleStream(true)}
-          style={styles.mockLink}>
-          <Text style={styles.mockLinkText}>No glasses? Start with the phone camera</Text>
-        </Pressable>
-      ) : null}
-      <View style={styles.actions}>
-        <Button
-          title={status.streaming ? 'Stop' : 'Start'}
-          variant={status.streaming ? 'quiet' : 'outline'}
-          size="calm"
-          onPress={() => toggleStream()}
-          loading={streamBusy}
-          style={{ flex: 1 }}
-        />
-        <Button
-          title={ask === 'listening' ? 'Done' : ask === 'thinking' ? 'Thinking…' : 'Ask'}
-          size="calm"
-          onPress={toggleAsk}
-          loading={ask === 'thinking'}
-          disabled={ask === 'thinking'}
-          style={{ flex: 2, backgroundColor: ask === 'listening' ? Colors.ink : Colors.harbor }}
-          accessibilityHint="Press, let the wearer ask a question, then press again"
-        />
-      </View>
-    </SafeAreaView>
+      <BottomBar>
+        {status.streaming ? (
+          <View style={styles.actions}>
+            <IconButton name="stop.fill" label="Stop the glasses" onPress={stopStream} size={64} tone="sand" />
+            <Button
+              title={ask === 'listening' ? 'Done' : ask === 'thinking' ? 'Thinking' : 'Ask a question'}
+              icon={ask === 'idle' ? 'mic.fill' : undefined}
+              variant={ask === 'listening' ? 'night' : 'primary'}
+              size="large"
+              onPress={toggleAsk}
+              loading={ask === 'thinking' || streamBusy}
+              style={{ flex: 1 }}
+              accessibilityHint="Tap, let the wearer ask a question out loud, then tap Done"
+            />
+          </View>
+        ) : (
+          <View style={{ gap: Spacing.one }}>
+            <Button
+              title="Start the glasses"
+              icon="eyeglasses"
+              size="large"
+              onPress={() => startStream(false)}
+              loading={streamBusy}
+            />
+            <TextButton
+              title="No glasses here? Use the phone camera"
+              onPress={() => startStream(true)}
+              style={{ alignSelf: 'center' }}
+            />
+          </View>
+        )}
+      </BottomBar>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  mockLink: { alignSelf: 'center', paddingVertical: Spacing.two, paddingHorizontal: Spacing.four },
-  mockLinkText: { fontFamily: Fonts.body, color: Colors.harborDeep, textDecorationLine: 'underline', fontSize: 15 },
-  safe: { flex: 1, backgroundColor: Colors.linen },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.six,
+    paddingHorizontal: Gutter,
     paddingTop: Spacing.two,
+    paddingBottom: Spacing.three,
   },
-  wordmark: { fontFamily: Fonts.display, fontSize: 28, color: Colors.harbor },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.six,
-    paddingVertical: Spacing.three,
-  },
-  preview: {
-    marginHorizontal: Spacing.four,
+  body: { paddingHorizontal: Gutter, paddingBottom: Spacing.six, gap: Spacing.four },
+  card: {
+    backgroundColor: Colors.surface,
     borderRadius: Radii.lg,
     overflow: 'hidden',
-    backgroundColor: Colors.ink,
+    ...Shadow,
   },
-  previewEmpty: {
+  viewfinder: { backgroundColor: Colors.night, overflow: 'hidden' },
+  resting: {
     ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(18,28,31,0.88)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: Spacing.six,
+    padding: Spacing.eight,
+    gap: Spacing.three,
   },
-  previewEmptyText: {
-    fontFamily: Fonts.body,
-    fontSize: 17,
-    color: Colors.listeningText,
-    textAlign: 'center',
+  restingTitle: { fontFamily: Fonts.display, fontSize: 20, lineHeight: 26, color: Colors.linen, textAlign: 'center' },
+  restingBody: { ...Type.secondary, color: Colors.nightText, textAlign: 'center', maxWidth: 260 },
+  badge: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(18,28,31,0.72)',
+    borderRadius: Radii.pill,
+    paddingHorizontal: 10,
+    height: 28,
   },
+  badgeTopLeft: { top: Spacing.three, left: Spacing.three },
+  badgeText: { ...Type.captionBold, color: Colors.nightText },
   faceBox: { position: 'absolute', borderWidth: 3, borderRadius: Radii.sm },
   faceLabel: {
     position: 'absolute',
     top: -30,
     left: -3,
     paddingHorizontal: 10,
-    paddingVertical: 3,
+    height: 26,
+    justifyContent: 'center',
     borderRadius: Radii.pill,
     maxWidth: 220,
   },
-  faceLabelText: { fontFamily: Fonts.display, fontSize: 16 },
-  body: { padding: Spacing.four, gap: Spacing.four },
-  lineCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radii.lg,
-    padding: Spacing.six,
-    gap: Spacing.two,
-  },
-  lineMeta: { fontFamily: Fonts.bodyBold, fontSize: 16, color: Colors.inkSoft },
-  lineText: { fontFamily: Fonts.display, fontSize: 28, lineHeight: 36, color: Colors.ink },
-  lineRoute: { fontFamily: Fonts.bodyBold, fontSize: 15, color: Colors.harborDeep },
+  faceLabelText: { fontFamily: Fonts.display, fontSize: 15, color: Colors.ink },
+  words: { padding: Spacing.five, gap: Spacing.two },
+  meta: { gap: 2 },
+  metaText: { ...Type.secondaryBold, color: Colors.inkSoft },
+  question: { ...Type.secondary, color: Colors.inkSoft },
+  spoken: { ...Type.spoken, color: Colors.ink },
+  spokenEmpty: { ...Type.body, color: Colors.inkSoft },
+  route: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: Spacing.one },
+  routeText: { ...Type.secondaryBold, color: Colors.harborDeep },
   listening: {
-    backgroundColor: Colors.ink,
-    borderRadius: 24,
-    padding: Spacing.six,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 18,
+    gap: Spacing.four,
+    backgroundColor: Colors.ink,
+    borderRadius: Radii.md,
+    padding: Spacing.five,
   },
-  listeningDot: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.harbor,
-    borderWidth: 10,
-    borderColor: 'rgba(143,209,199,0.18)',
-  },
-  listeningTitle: { fontFamily: Fonts.display, fontSize: 22, color: Colors.linen },
-  listeningSub: { fontFamily: Fonts.body, fontSize: 17, color: Colors.listeningText },
-  qa: { backgroundColor: Colors.harborMist, borderRadius: 24, padding: Spacing.five, gap: Spacing.one },
-  qaLabel: { fontFamily: Fonts.bodyBold, fontSize: 14, color: Colors.inkSoft, marginTop: Spacing.one },
-  qaQuestion: { fontFamily: Fonts.body, fontSize: 19, lineHeight: 26, color: Colors.ink },
-  qaAnswer: { fontFamily: Fonts.display, fontSize: 22, lineHeight: 29, color: Colors.harborDeep },
-  history: { gap: Spacing.two, paddingHorizontal: Spacing.two },
-  historyLine: { fontFamily: Fonts.body, fontSize: 16, lineHeight: 22, color: Colors.inkSoft },
-  historyTime: { fontFamily: Fonts.bodyBold, color: Colors.inkSoft },
-  actions: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.two,
-    paddingBottom: Spacing.three,
-  },
+  listeningTitle: { fontFamily: Fonts.display, fontSize: 20, lineHeight: 26, color: Colors.linen },
+  listeningBody: { ...Type.secondary, color: Colors.nightText },
+  pulseWrap: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
+  pulseRing: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.harbor },
+  pulseCore: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.harbor, alignItems: 'center', justifyContent: 'center' },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
 });

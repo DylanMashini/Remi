@@ -1,52 +1,31 @@
-import { Image } from 'expo-image';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
-import { Banner, Body, Display, initials } from '@/components/ui';
-import { Colors, Fonts, Radii, Spacing } from '@/constants/theme';
+import { Avatar, Button, EmptyState, Icon, IconButton, Notice, Screen, ScreenHeader } from '@/components/ui';
+import { Colors, Gutter, Radii, Spacing, Type } from '@/constants/theme';
+import { api, type Person } from '@/lib/api';
+import { lastSeenText } from '@/lib/format';
 import { errorMessage } from '@/lib/glasses';
-import { apiFetch, readError, useSession } from '@/lib/session';
-
-type Person = {
-  id: string;
-  name: string;
-  relationship: string | null;
-  notes: string | null;
-  avatarUrl: string | null;
-  samples: number;
-  lastSeenAt: string | null;
-};
-
-function lastSeen(iso: string | null): string {
-  if (!iso) return 'Not seen yet';
-  const d = new Date(iso);
-  const today = new Date().toDateString() === d.toDateString();
-  return today
-    ? `Seen ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-    : `Seen ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
-}
+import { BACKEND_URL, useSession, wearerName } from '@/lib/session';
 
 export default function PeopleScreen() {
-  const { backendUrl, token } = useSession();
+  const { token, account } = useSession();
   const [people, setPeople] = useState<Person[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!token) return;
     try {
-      const res = await apiFetch(backendUrl, '/api/people', { token });
-      if (!res.ok) throw new Error(await readError(res));
-      const body = (await res.json()) as { people?: Person[] };
-      setPeople(body.people ?? []);
+      setPeople(await api.people(token));
       setError(null);
     } catch (e) {
       setError(errorMessage(e));
     }
-  }, [backendUrl, token]);
+  }, [token]);
 
-  // Reload whenever the tab gains focus, so a just-enrolled person shows up.
+  // Reload whenever the tab gains focus, so a just-added person shows up.
   useFocusEffect(
     useCallback(() => {
       load();
@@ -59,92 +38,92 @@ export default function PeopleScreen() {
     setRefreshing(false);
   };
 
+  const who = wearerName(account);
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const count = people?.length ?? 0;
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <Screen edges={['top']}>
       <FlatList
         data={people ?? []}
         keyExtractor={(p) => p.id}
         contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.harbor} />
-        }
+        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.harbor} />}
         ListHeaderComponent={
-          <View style={{ gap: Spacing.three, marginBottom: Spacing.two }}>
-            <Display>People</Display>
-            <Body style={{ color: Colors.inkSoft }}>
-              Recall only recognizes the people your family adds here.
-            </Body>
-            {error ? <Banner tone="attention" title="Couldn't load people" body={error} /> : null}
+          <View>
+            <ScreenHeader
+              title="People"
+              lead={
+                count
+                  ? `Recall recognizes ${count === 1 ? 'one person' : `these ${count} people`}, and no one else.`
+                  : undefined
+              }
+              action={<IconButton name="plus" label="Add a person" onPress={() => router.push('/add-person')} tone="harbor" />}
+            />
+            {error ? (
+              <View style={{ marginBottom: Spacing.four }}>
+                <Notice tone="attention" title="People didn't load" body={error} />
+              </View>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
           people ? (
-            <Body style={{ color: Colors.inkSoft }}>No one yet. Add someone from the Enroll tab.</Body>
+            <EmptyState
+              icon="person.2"
+              title="No one yet"
+              body={`Add the people ${who === 'you' ? 'you see' : `${who} sees`} most. Three photos and a name is all it takes.`}
+              action={<Button title="Add a person" icon="plus" onPress={() => router.push('/add-person')} />}
+            />
           ) : undefined
         }
         ItemSeparatorComponent={() => <View style={styles.sep} />}
         renderItem={({ item, index }) => (
-          <View
-            style={[
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${item.name}${item.relationship ? `, ${item.relationship}` : ''}. ${lastSeenText(item.lastSeenAt)}`}
+            accessibilityHint="Opens their details"
+            onPress={() => router.push({ pathname: '/person/[id]', params: { id: item.id } })}
+            style={({ pressed }) => [
               styles.row,
               index === 0 && styles.first,
-              index === (people?.length ?? 0) - 1 && styles.last,
+              index === count - 1 && styles.last,
+              pressed && { backgroundColor: Colors.linen },
             ]}>
-            {item.avatarUrl ? (
-              <Image
-                source={{
-                  uri: `${backendUrl}${item.avatarUrl}`,
-                  headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-                  cacheKey: item.avatarUrl,
-                }}
-                style={styles.avatar}
-                contentFit="cover"
-                transition={150}
-              />
-            ) : (
-              <View style={[styles.avatar, styles.avatarEmpty]}>
-                <Text style={styles.avatarText}>{initials(item.name)}</Text>
-              </View>
-            )}
+            <Avatar name={item.name} uri={item.avatarUrl ? `${BACKEND_URL}${item.avatarUrl}` : null} headers={headers} size={52} />
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={styles.name}>{item.name}</Text>
-              <Text style={styles.sub}>
-                {[item.relationship, `${item.samples} photo${item.samples === 1 ? '' : 's'}`]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </Text>
-              {item.notes ? (
-                <Text style={styles.notes} numberOfLines={2}>
-                  {item.notes}
-                </Text>
-              ) : null}
+              <Text style={styles.sub}>{item.relationship ? capitalize(item.relationship) : 'No relationship set'}</Text>
             </View>
-            <Text style={styles.seen}>{lastSeen(item.lastSeenAt)}</Text>
-          </View>
+            <Text style={styles.seen}>{lastSeenText(item.lastSeenAt)}</Text>
+            <Icon name="chevron.right" size={14} color={Colors.inkMute} weight="bold" />
+          </Pressable>
         )}
       />
-    </SafeAreaView>
+    </Screen>
   );
 }
 
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.linen },
-  list: { padding: Spacing.four, paddingBottom: Spacing.eight },
+  list: { paddingHorizontal: Gutter, paddingBottom: Spacing.ten },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    padding: Spacing.five,
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
     backgroundColor: Colors.surface,
   },
   first: { borderTopLeftRadius: Radii.md, borderTopRightRadius: Radii.md },
   last: { borderBottomLeftRadius: Radii.md, borderBottomRightRadius: Radii.md },
-  sep: { height: 1, backgroundColor: Colors.sand, marginHorizontal: Spacing.five },
-  avatar: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, borderColor: Colors.apricot },
-  avatarEmpty: { backgroundColor: Colors.apricot, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontFamily: Fonts.display, fontSize: 22, color: Colors.ink },
-  name: { fontFamily: Fonts.bodyBold, fontSize: 18, color: Colors.ink },
-  sub: { fontFamily: Fonts.body, fontSize: 15, color: Colors.harborDeep },
-  notes: { fontFamily: Fonts.body, fontSize: 14, color: Colors.inkSoft },
-  seen: { fontFamily: Fonts.body, fontSize: 13, color: Colors.inkSoft, alignSelf: 'flex-start' },
+  sep: { height: StyleSheet.hairlineWidth * 2, backgroundColor: Colors.hairline, marginLeft: Spacing.four + 52 + Spacing.three },
+  name: { ...Type.headline, color: Colors.ink },
+  sub: { ...Type.secondary, color: Colors.inkSoft },
+  seen: { ...Type.caption, color: Colors.inkMute, maxWidth: 110, textAlign: 'right' },
 });

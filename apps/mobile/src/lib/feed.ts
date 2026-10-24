@@ -23,6 +23,7 @@ export type SpokenLine = {
   source: SpokenSource;
   at: number;
   route?: string; // filled when onSpoken arrives
+  question?: string; // for answers
 };
 
 export type Feed = {
@@ -71,9 +72,9 @@ export function useFeed(): Feed {
 }
 
 let seq = 0;
-export function pushSpoken(text: string, source: SpokenSource) {
-  const line: SpokenLine = { id: `${Date.now()}-${seq++}`, text, source, at: Date.now() };
-  set({ spoken: [line, ...state.spoken].slice(0, 20) });
+export function pushSpoken(text: string, source: SpokenSource, extra: Partial<SpokenLine> = {}) {
+  const line: SpokenLine = { id: `${Date.now()}-${seq++}`, text, source, at: Date.now(), ...extra };
+  set({ spoken: [line, ...state.spoken].slice(0, 30) });
 }
 
 export function setStatus(status: GlassesStatus) {
@@ -117,10 +118,7 @@ export function useGlassesFeed() {
           spoken[idx] = { ...spoken[idx], route };
           set({ spoken });
         } else {
-          pushSpoken(text, 'recognition');
-          const spoken = state.spoken.slice();
-          spoken[0] = { ...spoken[0], route };
-          set({ spoken });
+          pushSpoken(text, 'recognition', { route });
         }
       }),
       addGlassesListener('onError', ({ message }) => reportError(message)),
@@ -133,7 +131,7 @@ export function useGlassesFeed() {
 }
 
 /** Poll /api/reminders/due every 15 s while signed in and foregrounded; speak each one. */
-export function useReminderPoller(backendUrl: string, token: string | null) {
+export function useReminderPoller(token: string | null) {
   useEffect(() => {
     if (!token) return;
     let timer: ReturnType<typeof setInterval> | null = null;
@@ -143,7 +141,7 @@ export function useReminderPoller(backendUrl: string, token: string | null) {
       if (inFlight) return;
       inFlight = true;
       try {
-        const res = await apiFetch(backendUrl, '/api/reminders/due', { token });
+        const res = await apiFetch('/api/reminders/due', { token });
         if (!res.ok) throw new Error(`Reminders: ${await readError(res)}`);
         const body = (await res.json()) as {
           reminders?: { id: string; text: string; speechId: string }[];
@@ -180,5 +178,5 @@ export function useReminderPoller(backendUrl: string, token: string | null) {
       stop();
       sub.remove();
     };
-  }, [backendUrl, token]);
+  }, [token]);
 }

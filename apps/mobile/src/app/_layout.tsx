@@ -13,6 +13,7 @@ import { Colors } from '@/constants/theme';
 import { SessionProvider, useSession } from '@/lib/session';
 
 SplashScreen.preventAutoHideAsync();
+SplashScreen.setOptions({ fade: true, duration: 300 });
 
 const theme = {
   ...DefaultTheme,
@@ -50,9 +51,14 @@ function RootStack() {
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.linen } }}>
       <Stack.Protected guard={!!token}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="person/[id]" />
+        <Stack.Screen name="add-person" options={{ presentation: 'modal', gestureEnabled: false }} />
+        <Stack.Screen name="add-reminder" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="edit-person" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="edit-memory" options={{ presentation: 'modal' }} />
       </Stack.Protected>
       <Stack.Protected guard={!token}>
-        <Stack.Screen name="sign-in" />
+        <Stack.Screen name="(auth)" />
       </Stack.Protected>
     </Stack>
   );
