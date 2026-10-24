@@ -14,8 +14,68 @@ model Patient {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  people   Person[]
-  captures Capture[]
+  caregivers User[]
+  people     Person[]
+  files      File[]
+  events     Event[]
+  reminders  Reminder[]
+}
+
+/// A caregiver login. Each caregiver belongs to one patient.
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String
+  name            String
+  emailVerifiedAt DateTime?
+  patientId       String
+  createdAt       DateTime  @default(now())
+
+  patient    Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  sessions   Session[]
+  authTokens AuthToken[]
+  reminders  Reminder[]
+
+  @@index([patientId])
+}
+
+enum SessionKind {
+  WEB
+  DEVICE
+}
+
+/// Only the SHA-256 of the token is stored; the raw token lives in the cookie or the phone Keychain.
+model Session {
+  id        String      @id @default(cuid())
+  userId    String
+  tokenHash String      @unique
+  kind      SessionKind
+  expiresAt DateTime
+  createdAt DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum AuthTokenPurpose {
+  VERIFY
+  RESET
+}
+
+/// One-time email tokens (verify address, reset password).
+model AuthToken {
+  id        String           @id @default(cuid())
+  userId    String
+  tokenHash String           @unique
+  purpose   AuthTokenPurpose
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 /// Someone the patient should recognize (family, caregivers, friends).
@@ -25,25 +85,96 @@ model Person {
   name         String
   relationship String?
   notes        String?
+  avatarFileId String?  @unique
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  patient  Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  captures Capture[]
+  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  avatar      File?        @relation("PersonAvatar", fields: [avatarFileId], references: [id], onDelete: SetNull)
+  files       File[]       @relation("PersonFiles")
+  faceSamples FaceSample[]
+  events      Event[]
 
   @@index([patientId])
 }
 
-/// A photo taken by the glasses, optionally matched to a known person.
-model Capture {
-  id         String   @id @default(cuid())
-  patientId  String
-  personId   String?
-  imagePath  String
-  capturedAt DateTime @default(now())
+enum FileKind {
+  FACE_PHOTO
+  AVATAR
+}
+
+/// An object in Vercel Blob. Glasses frames are never stored; only caregiver enrollment photos.
+model File {
+  id          String   @id @default(cuid())
+  patientId   String
+  personId    String?
+  kind        FileKind
+  url         String
+  pathname    String
+  contentType String
+  size        Int
+  createdAt   DateTime @default(now())
+
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  person       Person?      @relation("PersonFiles", fields: [personId], references: [id], onDelete: Cascade)
+  avatarOf     Person?      @relation("PersonAvatar")
+  faceSamples  FaceSample[]
+
+  @@index([patientId])
+  @@index([personId])
+}
+
+/// One 512-d InsightFace embedding from one enrollment photo.
+model FaceSample {
+  id        String   @id @default(cuid())
+  personId  String
+  fileId    String?
+  embedding Float[]
+  createdAt DateTime @default(now())
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  file   File?  @relation(fields: [fileId], references: [id], onDelete: SetNull)
+
+  @@index([personId])
+}
+
+enum EventType {
+  RECOGNITION
+  UNKNOWN
+  UTTERANCE
+  QUESTION
+  ANSWER
+  REMINDER
+  SPOKEN
+}
+
+/// The memory log. Everything the glasses see, hear, and say lands here.
+model Event {
+  id        String    @id @default(cuid())
+  patientId String
+  type      EventType
+  personId  String?
+  text      String
+  data      Json?
+  createdAt DateTime  @default(now())
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
   person  Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
 
-  @@index([patientId, capturedAt])
+  @@index([patientId, createdAt])
+}
+
+model Reminder {
+  id          String    @id @default(cuid())
+  patientId   String
+  text        String
+  dueAt       DateTime
+  firedAt     DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([patientId, dueAt])
 }
