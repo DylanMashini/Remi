@@ -1,6 +1,6 @@
-import { AnswerIcon, BellIcon, ChatIcon, PersonIcon, QuestionIcon, SpeakerIcon } from "./icons";
+import { AnswerIcon, BellIcon, ChatIcon, MemoryIcon, PersonIcon, QuestionIcon, SpeakerIcon } from "./icons";
 
-export type EventKind = "RECOGNITION" | "UNKNOWN" | "UTTERANCE" | "QUESTION" | "ANSWER" | "REMINDER" | "SPOKEN";
+export type EventKind = "RECOGNITION" | "UNKNOWN" | "UTTERANCE" | "QUESTION" | "ANSWER" | "REMINDER" | "SPOKEN" | "PRACTICE";
 
 /** Event JSON as returned by GET /api/events and the /api/stream SSE feed. */
 export type EventJson = {
@@ -21,6 +21,7 @@ const KINDS: Record<EventKind, { label: string; Icon: typeof PersonIcon; tone: s
   ANSWER: { label: "Answered", Icon: AnswerIcon, tone: "bg-harbor-mist text-harbor-deep" },
   REMINDER: { label: "Reminder", Icon: BellIcon, tone: "bg-sand text-ink" },
   SPOKEN: { label: "Heard", Icon: SpeakerIcon, tone: "bg-harbor text-white" },
+  PRACTICE: { label: "Remembered", Icon: MemoryIcon, tone: "bg-apricot-mist text-apricot-deep" },
 };
 
 export function kindOf(type: string) {
@@ -31,9 +32,25 @@ export function isRepeat(data: unknown): boolean {
   return typeof data === "object" && data !== null && (data as { repeat?: unknown }).repeat === true;
 }
 
+/** PRACTICE events: a visit (knew / was told) or a kept memory. */
+export function practiceKind(data: unknown): "knew" | "told" | "memory" {
+  const d = (typeof data === "object" && data !== null ? data : {}) as { kind?: unknown; knew?: unknown };
+  if (d.kind === "memory") return "memory";
+  return d.knew === true ? "knew" : "told";
+}
+
 /** Human label for an event, e.g. "Ruth heard" or "Recognized Sarah". */
-export function eventTitle(type: string, patientName: string, personName?: string | null): string {
+export function eventTitle(type: string, patientName: string, personName?: string | null, data?: unknown): string {
   switch (type) {
+    case "PRACTICE": {
+      const kind = practiceKind(data);
+      const who = personName ?? "someone";
+      if (kind === "memory") {
+        const source = (data as { source?: string } | null)?.source;
+        return source === "CAREGIVER" ? `A memory of ${who} was added` : `${patientName} shared a memory of ${who}`;
+      }
+      return kind === "knew" ? `${patientName} knew ${who}` : `${patientName} was reminded of ${who}`;
+    }
     case "SPOKEN":
       return `${patientName} heard`;
     case "RECOGNITION":

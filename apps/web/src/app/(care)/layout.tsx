@@ -21,7 +21,10 @@ export default function CareLayout({ children }: LayoutProps<"/">) {
     <div className="flex min-h-dvh flex-col md:flex-row">
       <aside className="sticky top-0 z-20 flex flex-col gap-3 border-b border-sand bg-surface px-4 py-3 md:h-dvh md:w-[260px] md:shrink-0 md:gap-7 md:border-r md:border-b-0 md:px-5 md:py-8">
         <Wordmark className="px-2" />
-        <NavLinks />
+        {/* usePathname suspends while the shell for dynamic routes (/people/[id]) is prerendered. */}
+        <Suspense fallback={<div className="h-11 md:h-[260px]" aria-hidden="true" />}>
+          <NavLinks />
+        </Suspense>
         <div className="mt-auto hidden md:block">
           <Suspense fallback={null}>
             <CaringFor />

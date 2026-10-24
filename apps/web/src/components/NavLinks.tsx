@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarIcon, HomeIcon, LiveIcon, PeopleIcon } from "./icons";
+import { CalendarIcon, HomeIcon, LiveIcon, MemoryIcon, PeopleIcon } from "./icons";
 
 const LINKS = [
   { href: "/", label: "Overview", Icon: HomeIcon },
   { href: "/people", label: "People", Icon: PeopleIcon },
+  { href: "/remember", label: "Remember", Icon: MemoryIcon },
   { href: "/reminders", label: "Reminders", Icon: CalendarIcon },
   { href: "/live", label: "Live", Icon: LiveIcon },
 ] as const;

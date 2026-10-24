@@ -2,6 +2,8 @@
 
 import { refresh } from "next/cache";
 import { getCare } from "@/components/care";
+import { invalidateRoster } from "@/lib/match";
+import { cleanCallout, cleanMemoryText, distill } from "@/lib/memories";
 import { prisma } from "@/lib/prisma";
 
 export async function deleteEvent(eventId: string) {
@@ -35,5 +37,69 @@ export async function addReminder(_prev: ReminderFormState, formData: FormData):
 export async function deleteReminder(reminderId: string) {
   const { patientId } = await getCare();
   await prisma.reminder.deleteMany({ where: { id: reminderId, patientId } });
+  refresh();
+}
+
+export type FormState = { error?: string; ok?: boolean };
+
+/** Edits what the glasses say for one person: name, relationship, note. */
+export async function updateCallout(personId: string, _prev: FormState, formData: FormData): Promise<FormState> {
+  const { patientId } = await getCare();
+  const name = String(formData.get("name") ?? "").replace(/\s+/g, " ").trim();
+  const relationship = String(formData.get("relationship") ?? "").replace(/\s+/g, " ").trim();
+  const notes = String(formData.get("notes") ?? "").replace(/\s+/g, " ").trim();
+  if (!name) return { error: "A name is needed." };
+  if (name.length > 100 || relationship.length > 100) return { error: "Keep the name and relationship short." };
+  if (notes.length > 500) return { error: "Keep the note to a sentence or two." };
+  const { count } = await prisma.person.updateMany({
+    where: { id: personId, patientId },
+    data: { name, relationship: relationship || null, notes: notes || null },
+  });
+  if (count === 0) return { error: "This person is no longer in the roster." };
+  invalidateRoster(patientId);
+  refresh();
+  return { ok: true };
+}
+
+/** Caregiver adds a memory in their own words; it is distilled into the spoken sentence. */
+export async function addMemory(personId: string, _prev: FormState, formData: FormData): Promise<FormState> {
+  const { patientId, user } = await getCare();
+  const text = cleanMemoryText(formData.get("text"));
+  if (!text) return { error: "Write the memory first." };
+  const person = await prisma.person.findFirst({ where: { id: personId, patientId }, select: { id: true, name: true, relationship: true } });
+  if (!person) return { error: "This person is no longer in the roster." };
+  const { callout, usable } = await distill(text, person);
+  await prisma.memory.create({
+    data: { patientId, personId: person.id, text, calloutText: callout, useInCallout: usable, source: "CAREGIVER", createdById: user.id },
+  });
+  invalidateRoster(patientId);
+  refresh();
+  return { ok: true };
+}
+
+export async function setMemorySpoken(memoryId: string, useInCallout: boolean) {
+  const { patientId } = await getCare();
+  await prisma.memory.updateMany({ where: { id: memoryId, patientId }, data: { useInCallout } });
+  invalidateRoster(patientId);
+  refresh();
+}
+
+export async function updateMemoryCallout(memoryId: string, _prev: FormState, formData: FormData): Promise<FormState> {
+  const { patientId } = await getCare();
+  const callout = cleanCallout(formData.get("calloutText"));
+  if (!callout) return { error: "The spoken sentence cannot be empty." };
+  await prisma.memory.updateMany({
+    where: { id: memoryId, patientId },
+    data: { calloutText: /[.!?]$/.test(callout) ? callout : `${callout}.` },
+  });
+  invalidateRoster(patientId);
+  refresh();
+  return { ok: true };
+}
+
+export async function deleteMemory(memoryId: string) {
+  const { patientId } = await getCare();
+  await prisma.memory.deleteMany({ where: { id: memoryId, patientId } });
+  invalidateRoster(patientId);
   refresh();
 }

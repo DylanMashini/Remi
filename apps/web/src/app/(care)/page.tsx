@@ -3,9 +3,9 @@ import { Suspense } from "react";
 import { deleteEvent } from "./actions";
 import { Avatar } from "@/components/Avatar";
 import { getCare } from "@/components/care";
-import { EventIcon, eventTitle, isRepeat } from "@/components/events";
-import { capitalize, formatDayHeading, formatTime, formatWhen } from "@/components/format";
-import { CheckIcon, PersonIcon, TrashIcon } from "@/components/icons";
+import { EventIcon, eventTitle, isRepeat, practiceKind } from "@/components/events";
+import { capitalize, formatAgo, formatDayHeading, formatTime, formatWhen } from "@/components/format";
+import { CheckIcon, MemoryIcon, PersonIcon, TrashIcon } from "@/components/icons";
 import { buttonPrimary, buttonSecondary, Card, CardTitle, Chip, iconButton, PageHeader, Skeleton } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 
@@ -38,7 +38,9 @@ async function Overview() {
   const startOfDay = new Date(now);
   startOfDay.setHours(0, 0, 0, 0);
 
-  const [todayEvents, latest, recognitions, upcoming] = await Promise.all([
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const [todayEvents, latest, recognitions, upcoming, visits, newestMemory] = await Promise.all([
     prisma.event.findMany({
       where: { patientId, createdAt: { gte: startOfDay } },
       orderBy: { createdAt: "desc" },
@@ -57,7 +59,19 @@ async function Overview() {
       orderBy: { dueAt: "asc" },
       take: 5,
     }),
+    prisma.event.findMany({
+      where: { patientId, type: "PRACTICE", createdAt: { gte: weekAgo } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, data: true, createdAt: true },
+    }),
+    prisma.memory.findFirst({
+      where: { patientId },
+      orderBy: { createdAt: "desc" },
+      include: { person: { select: { id: true, name: true, avatarFileId: true } } },
+    }),
   ]);
+  const weekVisits = visits.filter((v) => practiceKind(v.data) !== "memory");
+  const weekKnew = weekVisits.filter((v) => practiceKind(v.data) === "knew").length;
 
   const active = latest ? now.getTime() - latest.createdAt.getTime() < ACTIVE_WINDOW_MS : false;
   const lastUnknown = todayEvents.find((e) => e.type === "UNKNOWN");
@@ -157,6 +171,50 @@ async function Overview() {
       </div>
 
       <Card>
+        <CardTitle action={<Link href="/remember" className="text-[15px] font-bold">Remember</Link>}>
+          Remembering together
+        </CardTitle>
+        <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          <div className="flex items-center gap-4 rounded-2xl bg-linen px-5 py-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm bg-apricot-mist text-apricot-deep">
+              <MemoryIcon size={22} />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <strong className="text-[17px]">
+                {weekVisits.length === 0
+                  ? "No visits this week"
+                  : `Knew ${weekKnew} of ${weekVisits.length} faces this week`}
+              </strong>
+              <span className="text-sm text-ink-soft">
+                {weekVisits.length === 0
+                  ? `Open Remember on the phone and sit with ${patientName} for a few minutes.`
+                  : `Last visit ${formatAgo(weekVisits[0].createdAt, now)}.`}
+              </span>
+            </div>
+          </div>
+          {newestMemory ? (
+            <div className="flex items-center gap-4 rounded-2xl bg-apricot-mist px-5 py-4">
+              <Avatar name={newestMemory.person.name} avatarFileId={newestMemory.person.avatarFileId} size={44} />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-sm text-ink-soft">
+                  Newest memory of{" "}
+                  <Link href={`/people/${newestMemory.person.id}`} className="font-bold text-ink no-underline hover:text-harbor-deep">
+                    {newestMemory.person.name}
+                  </Link>
+                  , {formatAgo(newestMemory.createdAt, now)}
+                </span>
+                <span className="font-display text-[17px] font-bold leading-snug">&ldquo;{newestMemory.calloutText}&rdquo;</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center rounded-2xl bg-linen px-5 py-4 text-[15px] text-ink-soft">
+              Memories {patientName} shares in Remember appear here, and the glasses start saying the newest one.
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card>
         <CardTitle action={<span className="text-sm text-ink-soft">{todayEvents.length} moments</span>}>
           Today
         </CardTitle>
@@ -176,7 +234,7 @@ async function Overview() {
                   <EventIcon type={e.type} />
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <strong className="text-[15px]">{eventTitle(e.type, patientName, e.person?.name)}</strong>
+                      <strong className="text-[15px]">{eventTitle(e.type, patientName, e.person?.name, e.data)}</strong>
                       {e.type === "QUESTION" && isRepeat(e.data) ? (
                         <span className="rounded-pill bg-attention-bg px-2.5 py-0.5 text-xs font-bold text-attention">
                           Asked again

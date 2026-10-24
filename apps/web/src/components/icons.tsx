@@ -71,3 +71,15 @@ export const ArrowLeftIcon = (p: IconProps) => (
 export const ShieldIcon = (p: IconProps) => (
   <Base {...p}><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z" /></Base>
 );
+export const MemoryIcon = (p: IconProps) => (
+  <Base {...p}><rect x="3" y="4" width="18" height="16" rx="3" /><circle cx="12" cy="10.5" r="2.5" /><path d="M7.5 17c.8-2 2.4-3 4.5-3s3.7 1 4.5 3" /></Base>
+);
+export const MicIcon = (p: IconProps) => (
+  <Base {...p}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></Base>
+);
+export const PencilIcon = (p: IconProps) => (
+  <Base {...p}><path d="M4 20l4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10z" /><path d="M13.5 7.5l3 3" /></Base>
+);
+export const ChevronRightIcon = (p: IconProps) => (
+  <Base strokeWidth={2.4} {...p}><path d="M9 6l6 6-6 6" /></Base>
+);
