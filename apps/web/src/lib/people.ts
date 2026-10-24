@@ -11,6 +11,8 @@ export type PersonJson = {
   avatarUrl: string | null;
   /** Full enrollment photo, for the Remember portrait. */
   photoUrl: string | null;
+  /** Every enrollment photo (oldest first); the phone embeds these for on-device recognition. */
+  photoUrls: string[];
   samples: number;
   lastSeenAt: string | null;
   /** The exact sentence the glasses say when this person walks up. */
@@ -31,7 +33,7 @@ const personSelect = {
   relationship: true,
   notes: true,
   avatarFileId: true,
-  files: { where: { kind: "FACE_PHOTO" as const }, orderBy: { createdAt: "asc" as const }, take: 1, select: { id: true } },
+  files: { where: { kind: "FACE_PHOTO" as const }, orderBy: { createdAt: "asc" as const }, select: { id: true } },
   _count: { select: { faceSamples: true, memories: true } },
   memories: { where: { useInCallout: true }, orderBy: { createdAt: "desc" as const }, take: 1, select: { calloutText: true } },
 } as const;
@@ -55,6 +57,7 @@ function toJson(p: PersonRow, lastSeen: Date | null | undefined, lastRemembered:
     notes: p.notes,
     avatarUrl: p.avatarFileId ? `/api/files/${p.avatarFileId}` : null,
     photoUrl: p.files[0] ? `/api/files/${p.files[0].id}` : p.avatarFileId ? `/api/files/${p.avatarFileId}` : null,
+    photoUrls: p.files.map((f) => `/api/files/${f.id}`),
     samples: p._count.faceSamples,
     lastSeenAt: lastSeen?.toISOString() ?? null,
     line: knownLine({ ...p, memory: p.memories[0]?.calloutText ?? null }),

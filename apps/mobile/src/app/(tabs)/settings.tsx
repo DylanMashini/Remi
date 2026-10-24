@@ -1,12 +1,12 @@
 import Constants from 'expo-constants';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { Button, Group, Notice, Row, Screen, ScreenHeader } from '@/components/ui';
 import { Gutter, Spacing } from '@/constants/theme';
 import { setStatus, useFeed } from '@/lib/feed';
 import { hostOf } from '@/lib/format';
-import { errorMessage, Glasses, glassesAvailable } from '@/lib/glasses';
+import { errorMessage, Glasses, glassesAvailable, glassesHas } from '@/lib/glasses';
 import { BACKEND_URL, useSession } from '@/lib/session';
 
 export default function SettingsScreen() {
@@ -51,6 +51,19 @@ export default function SettingsScreen() {
     ]);
 
   const caregiver = account?.role !== 'WEARER';
+
+  const localSupported = glassesHas('setLocalRecognition');
+  const local = status.localRecognition === true;
+  const toggleLocal = (on: boolean) =>
+    run(
+      'local',
+      async () => setStatus(await Glasses.setLocalRecognition(on)),
+      on ? 'Faces are now recognized on this phone. Camera frames stay on the device.' : 'Faces are recognized by the server again.'
+    );
+  const rosterText =
+    status.rosterPeople && status.rosterPeople > 0
+      ? `${status.rosterPeople} ${status.rosterPeople === 1 ? 'person' : 'people'}, ${status.rosterSamples ?? 0} photos ready`
+      : 'No one loaded yet';
 
   return (
     <Screen edges={['top']}>
@@ -99,6 +112,51 @@ export default function SettingsScreen() {
               onPress={() => run('status', async () => setStatus(await Glasses.getStatus()), 'Status is up to date.')}
             />
           </View>
+        </Group>
+
+        <Group
+          title="Recognition"
+          footer={
+            localSupported
+              ? 'On: each camera frame is matched on this phone with a small face model and discarded; only who was seen is sent to the memory log. Off: frames go to the Recall server for matching.'
+              : 'This build does not include the on-device face model. Faces are matched by the Recall server.'
+          }>
+          <Row
+            icon="iphone"
+            iconTone="harbor"
+            title="Recognize faces on this phone"
+            detail={local ? rosterText : 'Frames are matched by the server'}
+            trailing={
+              <Switch
+                value={local}
+                disabled={!localSupported || busy === 'local'}
+                onValueChange={toggleLocal}
+                accessibilityLabel="Recognize faces on this phone"
+              />
+            }
+          />
+          {local ? (
+            <View style={styles.buttons}>
+              <Button
+                title="Refresh people"
+                variant="quiet"
+                icon="arrow.clockwise"
+                loading={busy === 'roster'}
+                onPress={() =>
+                  run(
+                    'roster',
+                    async () => {
+                      const r = await Glasses.syncRoster();
+                      setStatus(await Glasses.getStatus());
+                      setMsg({ tone: 'success', text: `${r.people} ${r.people === 1 ? 'person' : 'people'} loaded, ${r.samples} photos ready.` });
+                    },
+                    'People are up to date.'
+                  )
+                }
+                style={{ flex: 1 }}
+              />
+            </View>
+          ) : null}
         </Group>
 
         <Group title="Privacy" footer="These are built in, not settings. They cannot be turned off.">

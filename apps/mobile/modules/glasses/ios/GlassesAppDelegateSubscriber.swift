@@ -31,6 +31,7 @@ public class GlassesAppDelegateSubscriber: ExpoAppDelegateSubscriber {
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     GlassesSDK.configureOnce()
+    FaceSelfTest.runIfRequested()
     return true
   }
 

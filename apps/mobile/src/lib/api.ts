@@ -9,6 +9,7 @@ export type Person = {
   avatarUrl: string | null;
   /** Full enrollment photo, for the Remember portrait. */
   photoUrl: string | null;
+  photoUrls?: string[];
   samples: number;
   lastSeenAt: string | null;
   /** The exact sentence the glasses say when this person walks up. */

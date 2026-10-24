@@ -65,6 +65,27 @@ in flight. Response:
 - Logs `RECOGNITION` / `UNKNOWN` events only when announcing (with `data.score`), plus a
   `SPOKEN` event for every `speak`.
 
+### `POST /api/recognitions` (on-device recognition path)
+When the phone's **local recognition** is on (Swift `LocalRecognition`, toggle in Settings), frames
+are matched on the phone with Core ML (`modules/glasses/ios/FaceRecognizer.swift`, InsightFace
+buffalo_sc MobileFaceNet; see `modules/glasses/scripts/README.md`) and `/api/frames` is not called.
+The phone applies the same threshold (0.5) and debounce (5 min per person, 60 s unknown) and posts
+only the decision, as JSON:
+```json
+{ "events": [ { "personId": "ck..", "score": 0.71, "box": [x, y, w, h] },
+              { "personId": null, "score": 0.12, "box": [x, y, w, h], "count": 1 } ] }
+```
+Response `{speak: {speechId, text}}` (or `{}` when nothing is said). The server logs
+`RECOGNITION` / `UNKNOWN` (with `data.source = "device"`) and `SPOKEN`, and builds the line
+(`knownLine`, including the newest memory). The phone speaks the returned text; if the request
+fails it speaks the roster copy of `line` (Apple speech) so the wearer is never left in silence.
+The server does **not** re-debounce this route; the phone is authoritative. No image bytes ever
+reach the server on this path. The server-side `/api/frames` path stays as the fallback (toggle off).
+
+Roster on the phone: `GET /api/people` → for every `photoUrls` entry the phone fetches
+`/api/files/[id]` and embeds the largest face itself (cached per file id in memory). Synced when
+local recognition is turned on, when a stream starts, after `enrollPerson`, and on `syncRoster()`.
+
 ### `GET /api/speech/[id]`
 Returns `audio/mpeg`. `id` = sha256(text) prefix; the text is registered server-side when the
 speechId is minted (`lib/tts.ts` `speechIdFor(text)`). Audio is generated with ElevenLabs once
@@ -89,16 +110,20 @@ Returns `{reminders: [{id, text, speechId}]}` for reminders with `dueAt <= now` 
 ## People and files
 
 ### `POST /api/people`
-`multipart/form-data`: `name` (required), `relationship`, `notes`, `photos` (1–3 JPEG files).
-Each photo → face sidecar `/embed` → largest face → `FaceSample`; photo stored in Blob as
+`multipart/form-data`: `name` (required), `relationship`, `notes`, `photos` (1–3 JPEG files),
+optional `faces` (JSON `[[x, y, w, h], ...]`, one phone-detected box per photo; sent when local
+recognition is on). Each photo → face sidecar `/embed` → largest face → `FaceSample`; if the
+sidecar is unreachable **and** `faces` was sent, the photo is stored without a `FaceSample` (the
+phone matches it locally) and the box is used for the avatar crop; photo stored in Blob as
 `FACE_PHOTO` `File` (dev fallback without `BLOB_READ_WRITE_TOKEN`: local disk under
 `apps/web/.cache/blobs`, `File.url = local:<path>`); first photo also cropped/resized to a 160px `AVATAR`. Photos with no face are
 rejected with `422 {error, index}` before anything is saved. Response `201 {person, samples}`.
 
 ### `GET /api/people` → `{people: [Person]}`
-`Person = {id, name, relationship, notes, avatarUrl, photoUrl, samples, lastSeenAt, line, memoryCount, lastRememberedAt}`.
+`Person = {id, name, relationship, notes, avatarUrl, photoUrl, photoUrls, samples, lastSeenAt, line, memoryCount, lastRememberedAt}`.
 `avatarUrl` is `/api/files/<avatarFileId>` or null; `photoUrl` is the first full enrollment photo
-(for the Remember portrait). `line` is the exact sentence the glasses say for this person.
+(for the Remember portrait); `photoUrls` is every enrollment photo, oldest first (the phone embeds
+these for on-device recognition). `line` is the exact sentence the glasses say for this person.
 
 ### `GET /api/people/[id]` → `{person: Person & {memories: [Memory], visits: [{id, knew, at}]}}`
 ### `PATCH /api/people/[id]` `{name?, relationship?, notes?}` (null clears) → `{person}`; invalidates the roster cache.
@@ -177,6 +202,10 @@ stopAsk(): Promise<{ question: string; answer: string }>  // uploads to /api/ask
 startListening(): Promise<void>              // begins mic capture for a Remember memory
 stopListening(): Promise<{ text: string }>   // uploads to /api/transcribe, returns the words (nothing spoken)
 speak(speechId: string, text: string): Promise<void>      // downloads /api/speech/id, plays over A2DP
+setLocalRecognition(enabled: boolean): Promise<GlassesStatus>
+  // on-device Core ML matching instead of /api/frames; persisted; rejects if the model is missing.
+  // Turning it on syncs the roster (embeds every enrollment photo on the phone).
+syncRoster(): Promise<{ people: number; samples: number }>  // re-embed the roster (local only)
 
 type GlassesStatus = {
   registration: "unregistered" | "registering" | "registered";
@@ -184,11 +213,15 @@ type GlassesStatus = {
   streaming: boolean;
   audioRoute: "a2dp" | "hfp" | "speaker" | "other";
   mock: boolean;
+  localRecognition: boolean;   // frames matched on the phone
+  rosterPeople: number;        // on-device roster size (0 when local recognition is off)
+  rosterSamples: number;
 };
 
 Events:
 onStatus(status: GlassesStatus)
-onFrameResult({ faces: Face[]; speak?: { speechId: string; text: string }; frameWidth: number; frameHeight: number })
+onFrameResult({ faces: Face[]; speak?: { speechId: string; text: string }; frameWidth: number; frameHeight: number; local?: boolean })
+  // local=true: matched on the phone; speak.speechId is "" until /api/recognitions answers
 onAudioRoute({ route: GlassesStatus["audioRoute"]; portName: string })
 onSpoken({ text: string; route: string })      // after each line plays
 onError({ message: string })

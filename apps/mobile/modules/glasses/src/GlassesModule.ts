@@ -8,6 +8,7 @@ import type {
   GlassesModuleEvents,
   GlassesStatus,
   ListenResult,
+  RosterSyncResult,
   StartStreamOptions,
 } from './Glasses.types';
 
@@ -24,6 +25,10 @@ declare class GlassesModule extends NativeModule<GlassesModuleEvents> {
   startListening(): Promise<void>;
   stopListening(): Promise<ListenResult>;
   speak(speechId: string, text: string): Promise<void>;
+  /** On-device face recognition (Core ML). Persisted; rejects if the model is missing from the build. */
+  setLocalRecognition(enabled: boolean): Promise<GlassesStatus>;
+  /** Re-embeds the roster from the enrollment photos (local recognition only). */
+  syncRoster(): Promise<RosterSyncResult>;
 }
 
 export default requireNativeModule<GlassesModule>('Glasses');
