@@ -1,0 +1,65 @@
+{
+  "mbf": {
+    "label": "MobileFaceNet (InsightFace buffalo_sc) — shipped today",
+    "params": "1.0 M",
+    "sizeMB": "6.6 MB",
+    "license": "InsightFace zoo, non-commercial research",
+    "source": "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_sc.zip",
+    "training": "WebFace600K",
+    "aneMs": 0.41
+  },
+  "edgeface_xs": {
+    "label": "EdgeFace-XS γ0.6 (Idiap)",
+    "params": "1.8 M",
+    "sizeMB": "3.8 MB",
+    "license": "BSD-3-Clause",
+    "source": "https://github.com/otroshi/edgeface",
+    "training": "WebFace12M/4M subsets",
+    "aneMs": 0.29
+  },
+  "edgeface_s": {
+    "label": "EdgeFace-S γ0.5 (Idiap)",
+    "params": "3.7 M",
+    "sizeMB": "7.6 MB",
+    "license": "BSD-3-Clause",
+    "source": "https://github.com/otroshi/edgeface",
+    "training": "WebFace12M/4M subsets",
+    "aneMs": 0.59
+  },
+  "sface": {
+    "label": "SFace 2021dec (OpenCV Zoo, 128-d)",
+    "params": "9.6 M",
+    "sizeMB": "19 MB",
+    "license": "Apache-2.0",
+    "source": "https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface",
+    "training": "not stated",
+    "aneMs": 0.66
+  },
+  "lvface_t": {
+    "label": "LVFace-T (ByteDance, ViT)",
+    "params": "19.1 M",
+    "sizeMB": "38 MB",
+    "license": "code MIT; weights non-commercial research",
+    "source": "https://huggingface.co/bytedance-research/LVFace",
+    "training": "Glint360K",
+    "aneMs": 1.14
+  },
+  "r50": {
+    "label": "ResNet50 ArcFace (InsightFace buffalo_l)",
+    "params": "43.6 M",
+    "sizeMB": "83 MB",
+    "license": "InsightFace zoo, non-commercial research",
+    "source": "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip",
+    "training": "WebFace600K",
+    "aneMs": 1.58
+  },
+  "r100": {
+    "label": "ResNet100 ArcFace (InsightFace antelopev2)",
+    "params": "65 M",
+    "sizeMB": "131 MB",
+    "license": "InsightFace zoo, non-commercial research",
+    "source": "https://github.com/deepinsight/insightface/releases/download/v0.7/antelopev2.zip",
+    "training": "Glint360K",
+    "aneMs": 2.41
+  }
+}

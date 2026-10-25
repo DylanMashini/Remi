@@ -33,6 +33,34 @@
 - The DAT 1.0.1 xcframeworks do ship `ios-arm64_x86_64-simulator` slices, so the dev client builds for the iOS 27 simulator with no stubs (NOTES above about "no simulator runtime" is out of date: Xcode 27.1 has the iOS 27.0 runtime). The simulator build is ~5 GB of derived data; delete `apps/mobile/ios/build` when short on disk.
 - `expo prebuild` + simulator xcodebuild can be driven headless with `CI=1 pnpm prebuild`, then `xcodebuild -workspace ios/MemoryAid.xcworkspace -scheme MemoryAid -sdk iphonesimulator -destination 'id=<sim udid>' CODE_SIGNING_ALLOWED=NO`.
 
+## Face model evaluation (Oct 24 night; `eval/face-models/`)
+
+- The "0.5 threshold carries over unchanged" note above was wrong. Through the Vision box crop
+  (no landmark alignment) same-person cosines run lower than InsightFace's aligned numbers: on
+  the 6,000 official LFW pairs only 77% of same-person pairs clear 0.50 with the shipped
+  MobileFaceNet, 60% once the probe face is 56 px wide, 30% at 40 px. Different-person pairs never
+  reach 0.30. `LocalRecognition.matchThreshold` should be 0.30 for this model (98% / 96% / 88%
+  same-person acceptance, 0 strangers in 9,000 comparisons). Full tables in
+  `eval/face-models/RESULTS.md`, chart in `results.png`.
+- ResNet50 ArcFace (`w600k_r50` from buffalo_l) converts with the same script and input contract,
+  83 MB fp16, 1.6 ms per face on the Neural Engine; at 0.30 it accepts 99.0% / 98.9% / 96.6%
+  with zero stranger accepts. ResNet100 (antelopev2 `glintr100`) is +1 point at 40 px for 131 MB.
+- `MLComputePlan` (iOS 17.4+, macOS 14.4+) is the way to prove Neural Engine placement: the
+  shipped model has 100/100 compute ops on the ANE; the 3 CPU ops are the ImageType scale/bias.
+  `ComputePlan.swift` prints the histogram and times each `MLComputeUnits` setting.
+- With `computeUnits = .all`, Core ML's planner prefers the GPU for EdgeFace (timm EdgeNeXt) and
+  LVFace (ViT) even though every op is ANE-capable: 4.8-5.2 ms instead of 0.3-1.1 ms. If either is
+  adopted, set `.cpuAndNeuralEngine`. The InsightFace ResNets and MobileFaceNet land on the ANE
+  under `.all`.
+- EdgeFace would not convert through `torch.jit.trace` (coremltools 9.0 + torch 2.14: `aten::Int`
+  from `x.shape` arithmetic, "only 0-dimensional arrays can be converted"); `torch.export.export(...)
+  .run_decompositions({})` works. SFace is 128-d and its ONNX graph already contains the
+  `(x-127.5)/128` normalisation, so its ImageType is scale 1, bias 0. LVFace-T converts via
+  onnx2torch once the batch dim is pinned to 1.
+- Apple Vision's box on a clean LFW face is a median 113 px wide; the degraded tiers were calibrated
+  to Vision widths (56 px, 40 px), not image scale. 9.75% of 40 px faces fall under
+  `minFaceSide = 36` and are skipped by every model alike.
+
 ## Decisions
 
 - Backend is Next.js route handlers. Face recognition runs on the phone (Core ML MobileFaceNet + Apple Vision in the Swift module). The frame never leaves the phone; only `{personId|null, score}` is posted to `/api/recognitions` for the memory log and the spoken line. An earlier Python InsightFace sidecar was removed on Oct 24 evening.
