@@ -23,7 +23,7 @@ public final class GlassesModule: Module {
   public func definition() -> ModuleDefinition {
     Name("Glasses")
 
-    Events("onStatus", "onFrameResult", "onAudioRoute", "onSpoken", "onError", "onPhotoIndex", "onButton")
+    Events("onStatus", "onFrameResult", "onAudioRoute", "onSpoken", "onError", "onPhotoIndex", "onButton", "onChat")
 
     OnCreate {
       let module = self
@@ -74,6 +74,15 @@ public final class GlassesModule: Module {
 
     AsyncFunction("stopAsk") { () async throws -> [String: Any] in
       try await GlassesController.shared.stopAsk()
+    }
+
+    // Live conversation: turns are automatic (server VAD), audio phone ↔ OpenAI directly. See CONTRACT.md.
+    AsyncFunction("startChat") { () async throws -> [String: Any] in
+      try await GlassesController.shared.startChat()
+    }
+
+    AsyncFunction("stopChat") { () async -> [String: Any] in
+      await GlassesController.shared.stopChat()
     }
 
     AsyncFunction("startListening") { () async throws in

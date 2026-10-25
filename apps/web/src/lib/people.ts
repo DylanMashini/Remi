@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { knownLine } from "@/lib/line";
 import { serializeMemory, type MemoryJson } from "@/lib/memories";
-import { speechIdFor } from "@/lib/tts";
+import { speechIdFor, withoutAudioTags } from "@/lib/tts";
 
 /** Shape of a person in `GET /api/people` and `GET /api/people/[id]` (see CONTRACT.md). */
 export type PersonJson = {
@@ -65,7 +65,7 @@ function toJson(p: PersonRow, lastSeen: Date | null | undefined, lastRemembered:
     photoUrls: p.files.map((f) => `/api/files/${f.id}`),
     photoCount: p.files.length,
     lastSeenAt: lastSeen?.toISOString() ?? null,
-    line,
+    line: withoutAudioTags(line),
     speechId: speechIdFor(line),
     memoryCount: p._count.memories,
     lastRememberedAt: lastRemembered?.toISOString() ?? null,

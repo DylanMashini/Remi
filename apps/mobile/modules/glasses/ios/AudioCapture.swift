@@ -7,11 +7,14 @@ import Foundation
 final class AudioCapture {
   static let sampleRate: Double = 16000
   private let targetFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true)!
+  /// The Realtime API takes PCM16 at 24 kHz only; the live conversation gets its own stream at that rate.
+  private let chatFormat = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 24000, channels: 1, interleaved: true)!
 
   private let lock = NSLock()
   private var askBuffer = Data()
   private var ambientBuffer = Data()
   private var askActive = false
+  private var chatActive = false
   private var ambientEnabled = false
   private var lastInbandAt: Date?
   private var converters: [String: AVAudioConverter] = [:]
@@ -22,6 +25,8 @@ final class AudioCapture {
 
   /// Called with a ~10 s WAV chunk for /api/utterances.
   var onAmbientChunk: ((Data) -> Void)?
+  /// Called with 24 kHz mono PCM16 (no header) for every input buffer while a live conversation runs.
+  var onChatAudio: ((Data) -> Void)?
   /// Toggles play-and-record on the shared audio session.
   var setRecording: ((Bool) -> Void)?
   var log: ((String) -> Void)?
@@ -51,7 +56,28 @@ final class AudioCapture {
     startEngine()
   }
 
-  private var isAsking: Bool { lock.lock(); defer { lock.unlock() }; return askActive }
+  var isAsking: Bool { lock.lock(); defer { lock.unlock() }; return askActive }
+  var isChatting: Bool { lock.lock(); defer { lock.unlock() }; return chatActive }
+
+  // MARK: Live conversation
+
+  /// Starts feeding `onChatAudio`. Uses the glasses' in-band audio when it is flowing, else the phone mic.
+  func startChat() throws {
+    lock.lock(); chatActive = true; lock.unlock()
+    if !hasRecentInband && !engineRunning {
+      log?("Chat: using phone mic (no in-band glasses audio)")
+      startEngine()
+      if !engineRunning {
+        lock.lock(); chatActive = false; lock.unlock()
+        throw GlassesError("Could not start microphone capture")
+      }
+    }
+  }
+
+  func stopChat() {
+    lock.lock(); chatActive = false; lock.unlock()
+    if engineRunning && !engineForAmbient && !isAsking { stopEngine() }
+  }
 
   // MARK: Ask
 
@@ -83,7 +109,7 @@ final class AudioCapture {
   /// In-band glasses audio from the DAT stream's audioFramePublisher.
   func appendInband(_ buffer: AVAudioPCMBuffer) {
     lock.lock(); lastInbandAt = Date(); lock.unlock()
-    if engineRunning && engineForAmbient && !isAsking {
+    if engineRunning && engineForAmbient && !isAsking && !isChatting {
       // Glasses audio showed up after we fell back; prefer it.
       log?("In-band glasses audio arrived; stopping phone mic fallback")
       engineForAmbient = false
@@ -93,7 +119,12 @@ final class AudioCapture {
   }
 
   private func append(_ buffer: AVAudioPCMBuffer) {
-    guard let data = convert(buffer), !data.isEmpty else { return }
+    if isChatting {
+      // The conversation hears everything; ambient transcription pauses so the exchange is not logged twice.
+      if let pcm24 = convert(buffer, to: chatFormat), !pcm24.isEmpty { onChatAudio?(pcm24) }
+      if !isAsking { return }
+    }
+    guard let data = convert(buffer, to: targetFormat), !data.isEmpty else { return }
     var chunk: Data?
     lock.lock()
     if askActive { askBuffer.append(data) }
@@ -111,12 +142,12 @@ final class AudioCapture {
     }
   }
 
-  private func convert(_ buffer: AVAudioPCMBuffer) -> Data? {
+  private func convert(_ buffer: AVAudioPCMBuffer, to targetFormat: AVAudioFormat) -> Data? {
     let fmt = buffer.format
-    if fmt.commonFormat == .pcmFormatInt16 && fmt.sampleRate == 16000 && fmt.channelCount == 1, let ch = buffer.int16ChannelData {
+    if fmt.commonFormat == .pcmFormatInt16 && fmt.sampleRate == targetFormat.sampleRate && fmt.channelCount == 1, let ch = buffer.int16ChannelData {
       return Data(bytes: ch[0], count: Int(buffer.frameLength) * 2)
     }
-    let key = "\(fmt.commonFormat.rawValue)-\(fmt.sampleRate)-\(fmt.channelCount)-\(fmt.isInterleaved)"
+    let key = "\(fmt.commonFormat.rawValue)-\(fmt.sampleRate)-\(fmt.channelCount)-\(fmt.isInterleaved)->\(targetFormat.sampleRate)"
     lock.lock()
     var conv = converters[key]
     if conv == nil { conv = AVAudioConverter(from: fmt, to: targetFormat); converters[key] = conv }
@@ -177,10 +208,16 @@ final class AudioCapture {
     setRecording?(false)
   }
 
+  /// Stream teardown. A live conversation survives it: in-band audio is gone, so it moves to the phone mic.
   func stopAll() {
     setAmbient(false)
+    let chatting = isChatting
     lock.lock(); askActive = false; askBuffer.removeAll(); lastInbandAt = nil; lock.unlock()
     stopEngine()
+    if chatting {
+      log?("Stream stopped mid-conversation; continuing on the phone mic")
+      startEngine()
+    }
   }
 
   // MARK: Helpers

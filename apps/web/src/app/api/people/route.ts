@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { knownLine, NOBODY_LINE, UNKNOWN_LINE } from "@/lib/line";
 import { deleteBlobs, saveFile } from "@/lib/storage";
 import { listPeople } from "@/lib/people";
-import { speechIdFor } from "@/lib/tts";
+import { speechIdFor, withoutAudioTags } from "@/lib/tts";
 import type { File as FileRow } from "@/generated/prisma/client";
 import { errorResponse, HttpError } from "../_lib/http";
 
@@ -149,7 +149,7 @@ export async function POST(req: Request) {
             photoUrls: photoFiles.map((f) => `/api/files/${f.id}`),
             photoCount: photoFiles.length,
             lastSeenAt: null,
-            line: knownLine({ ...updated, memory: null }),
+            line: withoutAudioTags(knownLine({ ...updated, memory: null })),
             speechId: speechIdFor(knownLine({ ...updated, memory: null })),
             memoryCount: 0,
             lastRememberedAt: null,

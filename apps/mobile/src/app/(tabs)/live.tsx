@@ -25,7 +25,20 @@ import {
   Wordmark,
 } from '@/components/ui';
 import { Colors, Fonts, Gutter, Radii, Shadow, Spacing, Type } from '@/constants/theme';
-import { clearError, dismissReminder, panSide, pushSpoken, reportError, setStatus, useFeed, type SpokenLine } from '@/lib/feed';
+import {
+  clearChat,
+  clearError,
+  dismissReminder,
+  panSide,
+  pushSpoken,
+  reportError,
+  setStatus,
+  startChat,
+  stopChat,
+  useFeed,
+  type Chat,
+  type SpokenLine,
+} from '@/lib/feed';
 import { timeOf } from '@/lib/format';
 import { errorMessage, Glasses, GlassesPreviewView, type GlassesStatus } from '@/lib/glasses';
 import { useSession, wearerName } from '@/lib/session';
@@ -60,6 +73,42 @@ const sourceLabel: Record<SpokenLine['source'], string> = {
   reminder: 'Reminder',
 };
 
+const chatTitle: Record<Chat['state'], string> = {
+  idle: '',
+  connecting: 'Connecting',
+  listening: 'Listening',
+  hearing: 'Hearing you',
+  thinking: 'Thinking',
+  speaking: 'Speaking',
+  ended: 'Conversation ended',
+};
+
+function chatHint(chat: Chat, who: string): string {
+  const you = who === 'you';
+  switch (chat.state) {
+    case 'connecting':
+      return 'Getting the glasses ready to talk.';
+    case 'listening': {
+      const pause = chat.silenceMs >= 1000 ? `${(chat.silenceMs / 1000).toFixed(1).replace(/\.0$/, '')} seconds` : 'a moment';
+      return `Talk whenever ${you ? 'you' : who} like${you ? '' : 's'}. The glasses wait ${pause} after ${you ? 'you' : who} stop${you ? '' : 's'} before answering, so pausing is fine.`;
+    }
+    case 'hearing':
+      return 'Go on. The glasses are listening.';
+    case 'thinking':
+      return 'Working out an answer.';
+    case 'speaking':
+      return 'Answering through the glasses.';
+    case 'ended':
+      return chat.endedReason === 'idle'
+        ? 'It went quiet for a while, so the glasses said goodbye.'
+        : chat.endedReason === 'error'
+          ? 'The connection dropped. Tap Talk to start again.'
+          : `${chat.turns} ${chat.turns === 1 ? 'exchange' : 'exchanges'} saved to the memory log.`;
+    default:
+      return '';
+  }
+}
+
 /** A slow breathing dot for the listening state. Motion only while listening. */
 function Pulse() {
   const [v] = useState(() => new Animated.Value(0));
@@ -93,6 +142,9 @@ export default function LiveScreen() {
   const [expiredFrameAt, setExpiredFrameAt] = useState(0);
   const [streamBusy, setStreamBusy] = useState(false);
   const [ask, setAsk] = useState<'idle' | 'listening' | 'thinking'>('idle');
+  // Live conversation first; tap-to-ask stays as the fallback when the conversation cannot start.
+  const [askMode, setAskMode] = useState<'chat' | 'tap'>('chat');
+  const [chatBusy, setChatBusy] = useState(false);
 
   // Hide boxes once no new frame result has arrived for FACE_TTL_MS.
   useEffect(() => {
@@ -140,6 +192,28 @@ export default function LiveScreen() {
       reportError(e);
     } finally {
       setStreamBusy(false);
+    }
+  };
+
+  const { chat } = feed;
+  const chatRunning = chat.state !== 'idle' && chat.state !== 'ended';
+
+  const toggleChat = async () => {
+    if (chatBusy) return;
+    setChatBusy(true);
+    try {
+      if (chatRunning) {
+        await stopChat();
+      } else {
+        await startChat();
+      }
+    } catch (e) {
+      const msg = errorMessage(e);
+      reportError(`Conversation unavailable: ${msg}`);
+      // No realtime key on the server, or an old native build: fall back to tap-to-ask for now.
+      setAskMode('tap');
+    } finally {
+      setChatBusy(false);
     }
   };
 
@@ -285,12 +359,52 @@ export default function LiveScreen() {
           </View>
         </View>
 
-        {ask === 'listening' ? (
+        {chat.state !== 'idle' ? (
           <View style={styles.listening} accessibilityLiveRegion="polite">
-            <Pulse />
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.listeningTitle}>Listening</Text>
-              <Text style={styles.listeningBody}>Ask the question out loud, then tap Done.</Text>
+            <View style={styles.chatHeader}>
+              {chat.state === 'listening' || chat.state === 'hearing' ? (
+                <Pulse />
+              ) : (
+                <View style={styles.pulseWrap}>
+                  <View style={[styles.pulseCore, chat.state === 'ended' && { backgroundColor: Colors.inkSoft }]}>
+                    <Icon
+                      name={chat.state === 'speaking' ? 'speaker.wave.2.fill' : chat.state === 'ended' ? 'checkmark' : 'ellipsis'}
+                      size={18}
+                      color={Colors.surface}
+                      weight="bold"
+                    />
+                  </View>
+                </View>
+              )}
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.listeningTitle}>{chatTitle[chat.state]}</Text>
+                <Text style={styles.listeningBody}>{chatHint(chat, who)}</Text>
+              </View>
+              {chat.state === 'ended' ? <IconButton name="xmark" label="Dismiss" onPress={clearChat} size={32} tone="night" /> : null}
+            </View>
+            {chat.user || chat.assistant ? (
+              <View style={styles.chatLines}>
+                {chat.user ? (
+                  <Text style={styles.chatUser} numberOfLines={3}>
+                    {who === 'you' ? 'You' : who}: {chat.user}
+                  </Text>
+                ) : null}
+                {chat.assistant ? (
+                  <Text style={styles.chatAssistant} numberOfLines={4}>
+                    {chat.assistant}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        ) : ask === 'listening' ? (
+          <View style={styles.listening} accessibilityLiveRegion="polite">
+            <View style={styles.chatHeader}>
+              <Pulse />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.listeningTitle}>Listening</Text>
+                <Text style={styles.listeningBody}>Ask out loud. The glasses are listening and looking at what is in front of you. Tap Done when finished.</Text>
+              </View>
             </View>
           </View>
         ) : null}
@@ -308,16 +422,29 @@ export default function LiveScreen() {
         {status.streaming ? (
           <View style={styles.actions}>
             <IconButton name="stop.fill" label="Stop the glasses" onPress={stopStream} size={64} tone="sand" />
-            <Button
-              title={ask === 'listening' ? 'Done' : ask === 'thinking' ? 'Thinking' : 'Ask a question'}
-              icon={ask === 'idle' ? 'mic.fill' : undefined}
-              variant={ask === 'listening' ? 'night' : 'primary'}
-              size="large"
-              onPress={toggleAsk}
-              loading={ask === 'thinking' || streamBusy}
-              style={{ flex: 1 }}
-              accessibilityHint="Tap, let the wearer ask a question out loud, then tap Done"
-            />
+            {askMode === 'chat' ? (
+              <Button
+                title={chatRunning ? 'End the conversation' : 'Talk'}
+                icon={chatRunning ? undefined : 'waveform'}
+                variant={chatRunning ? 'night' : 'primary'}
+                size="large"
+                onPress={toggleChat}
+                loading={chatBusy || streamBusy}
+                style={{ flex: 1 }}
+                accessibilityHint="Starts a conversation. The glasses answer each time the wearer finishes speaking; no need to tap again."
+              />
+            ) : (
+              <Button
+                title={ask === 'listening' ? 'Done' : ask === 'thinking' ? 'Thinking' : 'Ask a question'}
+                icon={ask === 'idle' ? 'mic.fill' : undefined}
+                variant={ask === 'listening' ? 'night' : 'primary'}
+                size="large"
+                onPress={toggleAsk}
+                loading={ask === 'thinking' || streamBusy}
+                style={{ flex: 1 }}
+                accessibilityHint="Tap, let the wearer ask a question out loud, then tap Done"
+              />
+            )}
           </View>
         ) : (
           <View style={{ gap: Spacing.one }}>
@@ -400,13 +527,15 @@ const styles = StyleSheet.create({
   route: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: Spacing.one },
   routeText: { ...Type.secondaryBold, color: Colors.harborDeep },
   listening: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: Spacing.four,
     backgroundColor: Colors.ink,
     borderRadius: Radii.md,
     padding: Spacing.five,
   },
+  chatHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.four },
+  chatLines: { gap: Spacing.two, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.12)', paddingTop: Spacing.three },
+  chatUser: { ...Type.secondary, color: Colors.nightText },
+  chatAssistant: { ...Type.spoken, color: Colors.linen },
   listeningTitle: { fontFamily: Fonts.display, fontSize: 20, lineHeight: 26, color: Colors.linen },
   listeningBody: { ...Type.secondary, color: Colors.nightText },
   pulseWrap: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },

@@ -10,6 +10,7 @@ import {
   defaultStatus,
   errorMessage,
   Glasses,
+  type ChatState,
   type Face,
   type GlassesStatus,
 } from '@/lib/glasses';
@@ -36,8 +37,26 @@ export function panSide(pan?: number): 'left' | 'right' | null {
   return null;
 }
 
+/** The live conversation as the screen shows it. `idle` when none is running. */
+export type Chat = {
+  state: ChatState | 'idle';
+  sessionId: string | null;
+  /** What the wearer is saying (partial until the turn is transcribed). */
+  user: string;
+  /** What the glasses are saying (grows as the model speaks). */
+  assistant: string;
+  turns: number;
+  /** Why the last conversation ended ("stopped", "idle", "error"). */
+  endedReason: string | null;
+  /** How the current session detects turns, for the screen's hint. */
+  silenceMs: number;
+};
+
+export const idleChat: Chat = { state: 'idle', sessionId: null, user: '', assistant: '', turns: 0, endedReason: null, silenceMs: 0 };
+
 export type Feed = {
   status: GlassesStatus;
+  chat: Chat;
   portName: string | null;
   faces: Face[];
   frameWidth: number;
@@ -50,6 +69,7 @@ export type Feed = {
 
 let state: Feed = {
   status: defaultStatus,
+  chat: idleChat,
   portName: null,
   faces: [],
   frameWidth: 504,
@@ -103,6 +123,36 @@ export function dismissReminder() {
   set({ reminder: null });
 }
 
+function setChat(patch: Partial<Chat>) {
+  set({ chat: { ...state.chat, ...patch } });
+}
+
+/** Starts a live conversation. Resolves once the socket is opening; progress arrives via onChat. */
+export async function startChat() {
+  setChat({ ...idleChat, state: 'connecting' });
+  try {
+    const r = await Glasses.startChat();
+    setChat({ sessionId: r.sessionId, silenceMs: r.silenceMs });
+    return r;
+  } catch (e) {
+    setChat({ state: 'idle' });
+    throw e;
+  }
+}
+
+export async function stopChat() {
+  try {
+    await Glasses.stopChat();
+  } finally {
+    if (state.chat.state !== 'idle') setChat({ state: 'ended', endedReason: 'stopped', user: '', assistant: '' });
+  }
+}
+
+/** Back to the resting screen after a conversation has ended. */
+export function clearChat() {
+  set({ chat: idleChat });
+}
+
 /** Subscribe to every glasses event while mounted. Mount once, in the signed-in layout. */
 export function useGlassesFeed() {
   useEffect(() => {
@@ -132,6 +182,23 @@ export function useGlassesFeed() {
         }
       }),
       addGlassesListener('onError', ({ message }) => reportError(message)),
+      addGlassesListener('onChat', (ev) => {
+        if (ev.kind === 'state') {
+          if (ev.state === 'ended') {
+            setChat({ state: 'ended', endedReason: ev.reason ?? 'ended', user: '', assistant: '' });
+          } else if (ev.state === 'hearing') {
+            // A new turn: the previous exchange has already landed in `spoken`.
+            setChat({ state: 'hearing', user: '', assistant: '' });
+          } else {
+            setChat({ state: ev.state, sessionId: ev.sessionId });
+          }
+        } else if (ev.kind === 'transcript') {
+          setChat(ev.role === 'user' ? { user: ev.text } : { assistant: ev.text });
+        } else if (ev.kind === 'turn') {
+          setChat({ turns: state.chat.turns + 1 });
+          pushSpoken(ev.answer, 'answer', { question: ev.question || undefined, route: ev.route });
+        }
+      }),
     ];
     Glasses.getStatus()
       .then((s) => set({ status: s }))

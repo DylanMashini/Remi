@@ -2,6 +2,8 @@ import { NativeModule, requireNativeModule } from 'expo';
 
 import type {
   AskResult,
+  ChatStartResult,
+  ChatStopResult,
   ConfigureOptions,
   EnrollPersonOptions,
   EnrollResult,
@@ -24,6 +26,9 @@ declare class GlassesModule extends NativeModule<GlassesModuleEvents> {
   captureGlassesPhoto(): Promise<string>;
   startAsk(): Promise<void>;
   stopAsk(): Promise<AskResult>;
+  /** Live conversation with automatic turns (see Glasses.types ChatEvent). One at a time. */
+  startChat(): Promise<ChatStartResult>;
+  stopChat(): Promise<ChatStopResult>;
   startListening(): Promise<void>;
   stopListening(): Promise<ListenResult>;
   speak(speechId: string, text: string): Promise<void>;

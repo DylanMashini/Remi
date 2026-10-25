@@ -607,16 +607,35 @@ final class GlassesController {
 
   // MARK: Ask
 
+  /// The frame on screen when the wearer tapped Ask: what they were looking at as the question
+  /// started. Replaced by a newer frame at stopAsk when one exists.
+  private var askFrame: UIImage?
+  /// A frame older than this is not sent (the stream may have stopped since).
+  private static let askFrameMaxAge: TimeInterval = 5
+  /// Long edge of the JPEG sent with a question. 768 px is plenty for the model to read a scene.
+  private static let askFrameMaxSide: CGFloat = 768
+
   func startAsk() throws {
     setup()
     try audio.startAsk()
-    NSLog("[Glasses] ask: recording via \(audio.source)")
+    askFrame = FrameHub.shared.fresh(maxAge: Self.askFrameMaxAge)
+    NSLog("[Glasses] ask: recording via \(audio.source); frame at start: \(askFrame != nil)")
   }
 
+  /// Uploads the question audio plus the latest glasses frame (if one is fresh) as multipart to
+  /// /api/ask. The frame is used for this one answer and discarded by the server; it is never stored.
   func stopAsk() async throws -> [String: Any] {
     let wav = audio.stopAsk()
+    let frame = FrameHub.shared.fresh(maxAge: Self.askFrameMaxAge) ?? askFrame
+    askFrame = nil
     guard wav.count > 44 + 16000 / 2 else { throw GlassesError("No audio captured") } // < ~0.25 s
-    let req = try BackendClient.shared.request("/api/ask", method: "POST", contentType: "audio/wav", body: wav, timeout: 45)
+    var form = Multipart()
+    form.addFile("audio", filename: "ask.wav", mime: "audio/wav", data: wav)
+    let jpeg = frame.flatMap { Self.askJpeg($0) }
+    if let jpeg { form.addFile("frame", filename: "frame.jpg", mime: "image/jpeg", data: jpeg) }
+    let body = form.finish()
+    NSLog("[Glasses] ask: uploading \(wav.count) B audio, frame \(jpeg?.count ?? 0) B")
+    let req = try BackendClient.shared.request("/api/ask", method: "POST", contentType: form.contentType, body: body, timeout: 45)
     let obj = try await BackendClient.shared.sendJSON(req)
     let question = obj["question"] as? String ?? ""
     let answer = obj["answer"] as? String ?? ""
@@ -625,7 +644,141 @@ final class GlassesController {
       NSLog("[Glasses] ask Q: \(question) A: \(answer)")
       speaker.enqueue(speechId: speechId, text: answer)
     }
-    return ["question": question, "answer": answer]
+    return ["question": question, "answer": answer, "sawFrame": jpeg != nil]
+  }
+
+  /// Downscales a frame to `askFrameMaxSide` on its long edge and encodes a JPEG.
+  private static func askJpeg(_ image: UIImage) -> Data? {
+    let w = image.size.width, h = image.size.height
+    guard w > 0, h > 0 else { return nil }
+    let scale = min(1, askFrameMaxSide / max(w, h))
+    guard scale < 1 else { return image.jpegData(compressionQuality: 0.75) }
+    let size = CGSize(width: (w * scale).rounded(), height: (h * scale).rounded())
+    let format = UIGraphicsImageRendererFormat.default()
+    format.scale = 1
+    let small = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+      image.draw(in: CGRect(origin: .zero, size: size))
+    }
+    return small.jpegData(compressionQuality: 0.75)
+  }
+
+  // MARK: Live conversation
+
+  /// The running conversation, if any. One at a time.
+  private var chat: RealtimeChat?
+  /// End a conversation after this long with nobody speaking.
+  private static let chatIdleSeconds: TimeInterval = 90
+
+  var chatActive: Bool { chat != nil }
+
+  /// Starts a live conversation: asks the server for a client secret, opens the WebSocket to OpenAI
+  /// from the phone, and streams the mic (glasses in-band audio, or the phone's) until `stopChat`,
+  /// a long silence, or a connection failure. Returns the session details for the screen.
+  func startChat() async throws -> [String: Any] {
+    setup()
+    if let old = chat {
+      old.stop(reason: "restarted")
+      chatEnded(old)
+    }
+    guard !audio.isAsking else { throw GlassesError("A question is being recorded; finish it first") }
+
+    let req = try BackendClient.shared.request("/api/realtime/session", method: "POST", contentType: "application/json", body: Data("{}".utf8), timeout: 20)
+    let obj = try await BackendClient.shared.sendJSON(req)
+    guard let urlStr = obj["url"] as? String, let url = URL(string: urlStr),
+          let secret = obj["clientSecret"] as? String, !secret.isEmpty else {
+      throw GlassesError("The conversation token was incomplete")
+    }
+    let sessionId = obj["sessionId"] as? String ?? UUID().uuidString
+    let model = obj["model"] as? String ?? ""
+    let cfg = RealtimeChat.Config(
+      url: url,
+      clientSecret: secret,
+      model: model,
+      sessionId: sessionId,
+      bargeIn: obj["bargeIn"] as? Bool ?? false,
+      greeting: obj["greeting"] as? String ?? "",
+      farewell: obj["farewell"] as? String ?? "",
+      idleSeconds: Self.chatIdleSeconds
+    )
+    let c = RealtimeChat(config: cfg)
+    c.frameProvider = { [weak self] in
+      guard let self, self.streaming, let frame = FrameHub.shared.fresh(maxAge: Self.askFrameMaxAge) else { return nil }
+      return Self.askJpeg(frame)
+    }
+    c.onState = { [weak self, weak c] state, reason in
+      guard let self else { return }
+      self.emit("onChat", ["kind": "state", "state": state.rawValue, "reason": reason, "sessionId": sessionId])
+      if state == .ended, let c { self.chatEnded(c) }
+    }
+    c.onTranscript = { [weak self] role, text, final in
+      self?.emit("onChat", ["kind": "transcript", "role": role, "text": text, "final": final, "sessionId": sessionId])
+    }
+    c.onTurn = { [weak self] question, answer, frame in
+      guard let self else { return }
+      let route = self.speaker.checkRoute()
+      self.emit("onChat", ["kind": "turn", "question": question, "answer": answer, "frame": frame, "route": route, "sessionId": sessionId])
+      Self.logChatTurn(sessionId: sessionId, model: model, question: question, answer: answer, frame: frame)
+    }
+    c.onError = { [weak self] msg in self?.emitError(msg) }
+
+    // Output goes wherever the speaker's session points (A2DP on the glasses); input is the same
+    // path tap-to-ask uses, converted to 24 kHz for the API.
+    speaker.configureSession()
+    audio.onChatAudio = { [weak c] pcm in
+      Task { @MainActor in c?.feed(pcm24k: pcm) }
+    }
+    try audio.startChat()
+    chat = c
+    do {
+      try c.start()
+    } catch {
+      chatEnded(c)
+      throw error
+    }
+    NSLog("[Glasses] chat \(sessionId): mic via \(audio.source), route \(speaker.route)")
+    var td: [String: Any] = [:]
+    if let t = obj["turnDetection"] as? [String: Any] { td = t }
+    return [
+      "sessionId": sessionId,
+      "model": model,
+      "voice": obj["voice"] as? String ?? "",
+      "bargeIn": cfg.bargeIn,
+      "turnDetection": td["type"] as? String ?? "",
+      "silenceMs": td["silence_duration_ms"] as? Int ?? 0,
+      "micSource": audio.source,
+    ]
+  }
+
+  /// Ends the conversation (user tapped End). Safe when none is running.
+  func stopChat() -> [String: Any] {
+    guard let c = chat else { return ["ended": true, "turns": 0] }
+    let turns = c.turnsLogged
+    c.stop(reason: "stopped")   // onState(.ended) → chatEnded
+    chatEnded(c)
+    return ["ended": true, "turns": turns]
+  }
+
+  private func chatEnded(_ c: RealtimeChat) {
+    guard chat === c else { return }
+    chat = nil
+    audio.onChatAudio = nil
+    audio.stopChat()
+  }
+
+  /// Posts one finished turn to the memory log (QUESTION / ANSWER / SPOKEN). Fire and forget.
+  private nonisolated static func logChatTurn(sessionId: String, model: String, question: String, answer: String, frame: Bool) {
+    Task.detached {
+      do {
+        let body = try JSONSerialization.data(withJSONObject: [
+          "sessionId": sessionId, "model": model, "question": question, "answer": answer, "frame": frame,
+        ] as [String: Any])
+        let req = try BackendClient.shared.request("/api/realtime/turns", method: "POST", contentType: "application/json", body: body, timeout: 20)
+        let obj = try await BackendClient.shared.sendJSON(req)
+        if obj["repeat"] as? Bool == true { NSLog("[Glasses] chat turn was a repeat question") }
+      } catch {
+        NSLog("[Glasses] chat turn log failed: \(error.localizedDescription)")
+      }
+    }
   }
 
   // MARK: Listen (Remember visits)

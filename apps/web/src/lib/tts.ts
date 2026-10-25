@@ -11,6 +11,11 @@ import path from "node:path";
 
 const CACHE_DIR = path.join(process.cwd(), ".cache", "speech");
 const DEFAULT_MODEL = "eleven_flash_v2_5"; // ElevenLabs' low-latency model
+/**
+ * Flash ignores audio tags like `[laughs]` or `[whispers]`; only the v3/v4 family performs them.
+ * v4 Turbo is the low-latency member of that family (~100 ms), so a tagged line costs little extra.
+ */
+const EXPRESSIVE_MODEL = "eleven_v4_turbo";
 const OUTPUT_FORMAT = "mp3_44100_128";
 /**
  * "Bella - Professional, Bright, Warm", one of ElevenLabs' premade voices. Premade voices work on
@@ -46,6 +51,30 @@ function voiceId(): string {
   return process.env.ELEVENLABS_VOICE_ID || DEFAULT_VOICE;
 }
 
+/** `[laughs]`, `[whispers]`, `[evil laugh]`: a short bracketed stage direction. */
+const AUDIO_TAG_RE = /\[[^\[\]\n]{1,60}\]/g;
+
+export function hasAudioTags(text: string): boolean {
+  return new RegExp(AUDIO_TAG_RE.source).test(text);
+}
+
+/**
+ * The words as they should be shown and logged: audio tags are performed by the voice, not read
+ * aloud, so they leave the display text. Keeps the tagged text for the audio itself (see speechIdFor).
+ */
+export function withoutAudioTags(text: string): string {
+  return text
+    .replace(AUDIO_TAG_RE, " ")
+    .replace(/\s+([.,!?;:])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function modelFor(text: string): string {
+  if (hasAudioTags(text)) return process.env.ELEVENLABS_EXPRESSIVE_MODEL_ID || EXPRESSIVE_MODEL;
+  return process.env.ELEVENLABS_MODEL_ID || DEFAULT_MODEL;
+}
+
 /** Make sure the audio for `text` exists (or is being generated). Fire-and-forget. */
 export function prewarmSpeech(text: string): void {
   speechIdFor(text);
@@ -53,7 +82,11 @@ export function prewarmSpeech(text: string): void {
 
 /** Registers text and returns its speechId. Kicks off audio generation in the background. */
 export function speechIdFor(text: string): string {
-  const id = createHash("sha256").update(text).digest("hex").slice(0, 16);
+  // Plain lines keep the historical id (sha256 of the words). A line that needs the expressive
+  // model gets its own id, so audio generated earlier by Flash (tags ignored) is never replayed.
+  const model = modelFor(text);
+  const keyed = model === DEFAULT_MODEL ? text : `${model}\n${text}`;
+  const id = createHash("sha256").update(keyed).digest("hex").slice(0, 16);
   if (!texts.has(id)) {
     texts.set(id, text);
     try {
@@ -91,7 +124,7 @@ async function generate(text: string): Promise<Buffer> {
     res = await fetch(url, {
       method: "POST",
       headers: { "xi-api-key": key, "content-type": "application/json", accept: "audio/mpeg" },
-      body: JSON.stringify({ text, model_id: process.env.ELEVENLABS_MODEL_ID || DEFAULT_MODEL }),
+      body: JSON.stringify({ text, model_id: modelFor(text) }),
       signal: AbortSignal.timeout(15000),
       cache: "no-store",
     });

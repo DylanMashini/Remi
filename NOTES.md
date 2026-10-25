@@ -22,6 +22,8 @@
 - Oct 24 (glasses button): DAT 1.0.1 has an Inputs capability (`MWDATInputs.xcframework`, beta, dev/beta release channels only) that reports the capture button (top right of the right temple) as one `.capture(.shortPress|.hold|.doublePress)` event per press, fired on release, plus `.button(.action)` for the action button (Meta says action-button support is unvalidated on some hardware). No user permission prompt is needed. `session.addInputs(configuration:)` must be called on a *started* session (returns nil otherwise) and throws if already attached; any error leaves it attached, so `removeInputs()` before re-adding. Events arrive on an `AsyncStream` that buffers 64 and drops the oldest. Added `MWDATInputs` to `fetch-dat.sh` and the podspec; the dev client must be rebuilt (`pnpm prebuild`, then the HANDOFF.md xcodebuild commands). A press calls `whoIsHere` on the phone: the latest matched frame (≤1.5 s old, else wait up to 2.5 s for the next) is announced with the 5 min / 60 s cooldown skipped, or "I don't see anyone right now." Open question until tried on real glasses: whether a short press still makes Meta AI take its own photo while our stream runs. MockDeviceKit may report the capability unavailable; the stream carries on and `Glasses.whoIsHere()` from JS exercises the same path.
 - Oct 24: The Swift module gained `startListening`/`stopListening` (same `AudioCapture.startAsk/stopAsk` path, posts to `/api/transcribe`). Native change: the dev client must be rebuilt (`pnpm prebuild`, then the xcodebuild/devicectl commands in HANDOFF.md). Until then `glassesHas('startListening')` is false and the Remember screen falls back to typing.
 
+- Oct 24 (TTS): ElevenLabs audio tags (`[laughs]`, `[whispers]`) are not sanitized anywhere; `eleven_flash_v2_5` simply ignores them. Only the v3/v4 family performs them, and `eleven_v4_turbo` (~100 ms, works on the free plan with the premade Bella voice: 200 on the first try) does it at Flash-like latency. `lib/tts.ts` now switches to v4 Turbo only for lines that contain a tag and keys those speech ids by model too, so the Flash-era cached MP3 of a tagged line is never replayed. Tags are stripped from the displayed/logged text, so a caregiver note of `[evil laugh]` is heard but never shown on screen.
+
 ## On-device face recognition (Oct 24 evening; now the only path)
 
 - coremltools 9 has no ONNX frontend any more; the path that worked for InsightFace's `w600k_mbf.onnx` (MobileFaceNet, 13.6 MB) is `onnx2torch` → `torch.jit.trace` → `ct.convert(convert_to="mlprogram", ImageType(scale=1/127.5, bias=-1))`. fp16 output is 6.6 MB and agrees with onnxruntime to cosine 0.99998. Torch 2.14 works despite the "untested" warning.
@@ -153,7 +155,7 @@ Evidence: `eval/face-models/RESULTS.md`.
 ## Privacy, as implemented
 
 - Faces are matched only against the roster the family enrolls. No stranger search.
-- Glasses frames are matched in memory on the phone and discarded; they are never uploaded. Only events persist. Caregivers can delete any event.
+- Glasses frames are matched in memory on the phone and discarded; recognition never uploads a frame. The one exception is a deliberate ask: the single frame the wearer is looking at travels with their question, is shown to the model, and is discarded with the request (never stored). Only events persist. Caregivers can delete any event.
 - Enrollment photos live in Vercel Blob and are only served through an authenticated proxy (`/api/files/[id]`).
 - Passwords are bcrypt-hashed; session tokens are stored only as SHA-256 hashes.
 - Enrollment photos are re-encoded with sharp (EXIF rotation applied, all metadata including GPS stripped) before storage.
@@ -187,3 +189,81 @@ Evidence: `eval/face-models/RESULTS.md`.
 - Latency: TTS generation (flash v2.5) is 300 to 450 ms plus a download, on top of the recognition round trip. Both are now off the critical path: `GET /api/people` mints a `speechId` per roster line (which starts generation on the server), and the Swift `Speaker` downloads every one into `Library/Caches/speech/` during roster sync. A recognition plays from disk; the only network wait left is the `POST /api/recognitions` log call.
 - There is no client-safe way to call ElevenLabs TTS from the phone: single-use tokens exist only for realtime Scribe (STT) and signed URLs only for Conversational AI agents, so a direct call would ship the API key in the app binary. Routing through Next also lets the server cache; a direct call would pay generation latency every time.
 - Oct 24 (spatial whisper): the name is now panned to the side of the frame the face is on. `AVAudioPlayer.pan` (-1..1) is all it takes over A2DP (stereo); HFP is mono and ignores it, and `AVSpeechSynthesizer` has no pan at all, so the Apple-speech fallback stays centred. Pan = box centre offset from frame centre x1.5, clamped, averaged across the faces a line names; the glasses camera is not mirrored, so frame-left is the wearer's left. Native change: rebuild the dev client. The Live screen shows "Whispered in the left/right ear" after the line plays.
+
+## Ask with a frame via gpt-realtime (Oct 24 night)
+
+- Ask now sends what the wearer sees. `stopAsk` grabs the newest glasses frame from `FrameHub`
+  (≤ 5 s old, else the one noted at `startAsk`), downsizes it to 768 px / JPEG 0.75 (~60 to 120 KB)
+  and posts it with the WAV as multipart. The server never writes the frame anywhere; it lives in
+  the request and the one WebSocket session. The privacy statement is now "frames never leave the
+  phone for recognition; one frame travels with a deliberate ask and is discarded."
+- Model: `gpt-realtime-2.1` (released July 6 2026; replaced `gpt-realtime`, which OpenAI shut down
+  July 20 2026). It takes text, audio and image input. We use **text output** and keep speaking
+  through ElevenLabs so every line has the same voice; the model's own voice would make the answer
+  sound like a different person.
+- Realtime API gotchas (`lib/realtime.ts`): PCM input is 24 kHz only, so the phone's 16 kHz WAV is
+  linearly resampled on the server. A `conversation.item.create` with `input_audio` is **not**
+  transcribed by the server; only audio committed through `input_audio_buffer` fires
+  `conversation.item.input_audio_transcription.completed`, which we need for the question text in
+  the log. So: image item → `input_audio_buffer.append` + `commit` → `response.create` (after
+  `input_audio_buffer.committed`), with `turn_detection: null`. The transcript often lands after
+  `response.done`; we wait up to 4 s for it, then fall back to our own STT for the log line.
+- Repeats: the realtime answer is generated before we know the transcript, so the "same answer in
+  the same words" rule is applied afterwards: if a near-identical question was asked in the last 2 h,
+  its earlier answer is spoken and the fresh one is dropped.
+- Node 22's built-in `WebSocket` cannot set an `Authorization` header, so `apps/web` depends on
+  `ws` 8. The hoisted root `node_modules/ws` is still 7.5 (an Expo transitive); `apps/web` resolves
+  its own 8.22, so the API is the same for the client, but `WebSocketServer` as a named export only
+  exists in 8 (bit me in a scratch test).
+- Verified with a mock Realtime server (full event sequence, image data URL, 24 kHz byte count,
+  text path, 503 without a key). Not yet run against OpenAI: `OPENAI_API_KEY` is empty in `.env`.
+  Native change (`GlassesController.stopAsk`, `FrameHub`): rebuild the dev client.
+
+## Live conversation via the Realtime API (Oct 24 night)
+
+- Ask is now a conversation, not a tap/Done pair. `RealtimeChat.swift` opens the WebSocket to OpenAI
+  **from the phone** with a 10 min client secret from `/api/realtime/session`; `apps/web` never sees
+  the audio. `URLSessionWebSocketTask` can set `Authorization: Bearer ek_...` directly (browsers need
+  the `openai-insecure-api-key.<key>` subprotocol trick; we do not). The whole session config
+  (instructions, voice, VAD) rides inside the client secret, so the phone sends no `session.update`.
+- Turn detection: `server_vad` with `silence_duration_ms` 1500 (`REALTIME_SILENCE_MS`). The API
+  default of 500 ms cuts off anyone who pauses to find a word. `semantic_vad` with `eagerness: low`
+  is the other option (`REALTIME_TURN_DETECTION=semantic_vad`); it has no silence knob, it tunes a
+  "maximum wait" from the words themselves. Both are a one-line env change; try semantic on the real
+  wearer if 1.5 s still feels rushed, and raise the threshold at a loud expo.
+- Half-duplex on purpose: the glasses' speakers are open-ear and centimetres from the temple mics,
+  so with the mic open during playback the model would hear itself and VAD would start a turn on the
+  echo (a self-talk loop). The phone drops mic audio from `response.created` until the last buffer has
+  played plus 300 ms. `REALTIME_BARGE_IN=1` reopens it (and sends `conversation.item.truncate` with the
+  played ms on `speech_started`, since over WebSocket the server does not know what was heard).
+- The conversation answers in the realtime model's own voice (`marin`, speed 0.9), not ElevenLabs:
+  streaming TTS per turn would add a server round trip and could not be truncated in sync with the
+  model's idea of what was heard. Recognitions/reminders stay on ElevenLabs. Two voices in the demo;
+  judged acceptable for a live back-and-forth. `OPENAI_REALTIME_VOICE` switches it.
+- Logging: the phone posts each finished turn to `/api/realtime/turns`. The user transcript usually
+  arrives before `response.done`, but not always: 4 s grace, then the turn is logged as
+  `(not transcribed)`. The "same answer in the same words" rule is pushed into the instructions (last
+  2 h of Q/A pairs) because the words are spoken before the server can compare.
+- Audio out is an `AVAudioEngine` + `AVAudioPlayerNode` fed Float32 buffers converted from the API's
+  PCM16; `.dataPlayedBack` completions count what actually left the speaker (for the mic reopen and
+  truncation). A route change stops the engine (`AVAudioEngineConfigurationChange`): it is restarted.
+- Input: `AudioCapture` gained a second converter to 24 kHz (the only PCM rate the API takes) and a
+  `chatActive` flag; ambient `/api/utterances` chunks pause during a conversation. Chunks are coalesced
+  to ~100 ms before `input_audio_buffer.append`.
+- Native change (new file `RealtimeChat.swift`): `pod install`/`pnpm prebuild`, then rebuild the dev
+  client. Until then `Glasses.startChat` rejects and the Live screen falls back to tap-to-ask.
+- Verified Oct 24 23:50 against the real API from a Node probe playing the phone's part (isolated
+  build in `.cache/web-3107`): `/api/realtime/session` 200 with the config echoed back by
+  `session.created` (server_vad, 1500 ms); the ephemeral key works in the `Authorization` header;
+  the out-of-band greeting produced 1.1 s of audio; a `say`-generated "What were we talking about
+  just now?" was committed 1.5 s after the speech ended, transcribed in 1.3 s, and answered with 8.4 s
+  of audio 2.3 s after the commit. `/api/realtime/turns` logs QUESTION/ANSWER/SPOKEN with
+  `source: "chat"`. The Swift side compiled for the simulator (`xcodebuild -scheme Glasses`); it has
+  not yet run on the phone. `.env` does have an `OPENAI_API_KEY` (the earlier note was stale).
+- Oct 25 00:10, first run on the phone: the conversation worked but the voice stuttered. Cause: the
+  player scheduled every `response.output_audio.delta` the instant it arrived, with nothing buffered
+  ahead, so each late packet was a gap. `RealtimeAudioOut` now stages audio and schedules 200 ms
+  pieces after a 400 ms head start per response (re-primed after an underrun; underruns are counted
+  in the log as `[Chat] audio: N underrun(s)`). If stutter persists with 0 underruns logged, it is
+  the Bluetooth link (camera stream + A2DP share it): compare with an ElevenLabs recognition line,
+  which plays from disk; if that stutters too, the radio is the bottleneck, not the network.

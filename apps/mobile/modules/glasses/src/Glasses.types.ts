@@ -92,6 +92,34 @@ export type EnrollResult = { personId: string; photos: number };
 
 export type AskResult = { question: string; answer: string };
 
+/**
+ * Live conversation (RealtimeChat.swift). The phone talks to OpenAI's Realtime API directly over a
+ * WebSocket opened with a client secret from /api/realtime/session; turns are detected by the API
+ * (server VAD with a long silence allowance), the answer plays in the model's voice over the glasses,
+ * and each finished turn is posted to /api/realtime/turns for the memory log.
+ */
+export type ChatState = 'connecting' | 'listening' | 'hearing' | 'thinking' | 'speaking' | 'ended';
+
+export type ChatStartResult = {
+  sessionId: string;
+  model: string;
+  voice: string;
+  bargeIn: boolean;
+  /** "server_vad" or "semantic_vad". */
+  turnDetection: string;
+  /** server_vad: silence that ends the wearer's turn (0 when semantic). */
+  silenceMs: number;
+  /** "glasses-inband" | "phone-mic" | "none". */
+  micSource: string;
+};
+
+export type ChatStopResult = { ended: boolean; turns: number };
+
+export type ChatEvent =
+  | { kind: 'state'; state: ChatState; reason?: string | null; sessionId: string }
+  | { kind: 'transcript'; role: 'user' | 'assistant'; text: string; final: boolean; sessionId: string }
+  | { kind: 'turn'; question: string; answer: string; frame: boolean; route: string; sessionId: string };
+
 /** Transcript of what the wearer just said (Remember visits). */
 export type ListenResult = { text: string };
 
@@ -103,6 +131,8 @@ export type GlassesModuleEvents = {
   onError: (event: { message: string }) => void;
   /** At most every 500 ms while indexing, and once on every state change. */
   onPhotoIndex: (status: PhotoIndexStatus) => void;
+  /** Live conversation progress: state changes, live transcripts, finished turns. */
+  onChat: (event: ChatEvent) => void;
 };
 
 export type GlassesPreviewProps = ViewProps;

@@ -2,7 +2,7 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { knownLine, NOBODY_LINE, UNKNOWN_ALSO_LINE, UNKNOWN_LINE } from "@/lib/line";
 import { logEvent } from "@/lib/events";
-import { speechIdFor } from "@/lib/tts";
+import { speechIdFor, withoutAudioTags } from "@/lib/tts";
 import { errorResponse, HttpError, readJson } from "../_lib/http";
 
 type Incoming = {
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
         const line = knownLine({ ...person, memory: person.memories[0]?.calloutText ?? null });
         lines.push(line);
         announced.push(person.id);
-        await logEvent(patientId, "RECOGNITION", line, { personId: person.id, data: { score, box, source, trigger } });
+        await logEvent(patientId, "RECOGNITION", withoutAudioTags(line), { personId: person.id, data: { score, box, source, trigger } });
       } else if (!unknown) {
         unknown = { score, box, count: e.count ?? 1 };
       }
@@ -74,8 +74,9 @@ export async function POST(req: Request) {
     if (lines.length === 0 && onDemand) lines.push(NOBODY_LINE);
 
     if (lines.length === 0) return Response.json({});
-    const text = lines.join(" ");
-    const speechId = speechIdFor(text);
+    // The audio is made from the tagged words; the phone shows and logs the words without the tags.
+    const speechId = speechIdFor(lines.join(" "));
+    const text = withoutAudioTags(lines.join(" "));
     await logEvent(patientId, "SPOKEN", text, {
       personId: announced.length === 1 ? announced[0] : null,
       data: { speechId, source, trigger },

@@ -3,7 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { logEvent } from "@/lib/events";
 import { knownLine } from "@/lib/line";
 import { calloutFor } from "@/lib/memories";
-import { speechIdFor } from "@/lib/tts";
+import { speechIdFor, withoutAudioTags } from "@/lib/tts";
 import { errorResponse, HttpError, readJson } from "../_lib/http";
 
 /**
@@ -25,8 +25,9 @@ export async function POST(req: Request) {
     });
     if (!person) throw new HttpError(404, "Person not found");
 
-    const line = knownLine({ ...person, memory: await calloutFor(person.id) });
-    const speechId = speechIdFor(line);
+    const spoken = knownLine({ ...person, memory: await calloutFor(person.id) });
+    const speechId = speechIdFor(spoken);
+    const line = withoutAudioTags(spoken);
     await logEvent(patientId, "PRACTICE", body.knew ? `Knew ${person.name} right away` : `Was reminded who ${person.name} is`, {
       personId: person.id,
       data: { kind: "visit", knew: body.knew, speechId },

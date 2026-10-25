@@ -6,15 +6,24 @@ final class FrameHub {
   static let shared = FrameHub()
   private let views = NSHashTable<GlassesPreviewView>.weakObjects()
   private(set) var latest: UIImage?
+  private(set) var latestAt: Date?
 
   func register(_ v: GlassesPreviewView) {
     views.add(v)
     v.show(latest)
   }
 
+  /// The newest frame if it arrived within `maxAge` seconds (a stale frame from an earlier stream
+  /// would mislead an answer), else nil. Main thread only.
+  func fresh(maxAge: TimeInterval) -> UIImage? {
+    guard let latest, let at = latestAt, Date().timeIntervalSince(at) <= maxAge else { return nil }
+    return latest
+  }
+
   func publish(_ image: UIImage?) {
     DispatchQueue.main.async {
       self.latest = image
+      self.latestAt = image == nil ? nil : Date()
       for v in self.views.allObjects { v.show(image) }
     }
   }

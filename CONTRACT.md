@@ -17,7 +17,10 @@ Single source of truth for the web API (`apps/web`) and the Swift module
   `Authorization: Bearer <token>` (phone) or the `recall_session` cookie (web) and returns
   `{ user, patientId }`, or throws `AuthError` (use `unauthorized(err)` to turn it into a 401).
   All queries are scoped by `patientId`.
-- **Privacy.** Glasses frames never leave the phone. No face embeddings are stored anywhere.
+- **Privacy.** Glasses frames never leave the phone for recognition. The one exception is a
+  deliberate ask: when the wearer taps Ask, the single frame they are looking at rides along with
+  their question to `/api/ask`, is shown to the model, and is discarded with the request (never
+  stored). No face embeddings are stored anywhere.
   Enrollment photos go to Vercel Blob and are referenced by `File` rows; the UI only ever loads
   them through `/api/files/[id]` (authed). Deleting a person deletes their blobs.
 - Route handlers read raw bodies with `await req.arrayBuffer()`. Do **not** add
@@ -71,6 +74,11 @@ An unknown `personId` is `404`; an empty `events` array is `400` (unless `trigge
 
 - Known line: `This is {name}, your {relationship}. {notes} {memory}` (omit missing parts).
   Unknown line: `Someone new is here.` Never guess a name below threshold.
+- Audio tags: a bracketed stage direction in a note, memory, or reminder (`[laughs]`,
+  `[whispers]`, `[sighs]`) is performed by the voice, not read. The server generates that line
+  with `eleven_v4_turbo` instead of Flash (which ignores tags) and strips the tags from every
+  `line` / `text` it returns or logs, so the phone screen, the timeline, and the Apple-speech
+  fallback show plain words. `speechId` is still minted from the tagged text.
 
 **On demand (glasses button).** A short press of the capture button (top right of the right
 temple, DAT Inputs capability, beta) or the phone's `Glasses.whoIsHere()` makes the phone answer
@@ -99,12 +107,71 @@ recognition normally plays from disk with no network wait. Swift falls back to
 `AVSpeechSynthesizer` with the `text` it already has if the audio cannot be fetched or decoded.
 
 ### `POST /api/ask`
-Body: raw `audio/wav` (16 kHz mono PCM16) or JSON `{text}`. Server: transcribe (ElevenLabs
-Scribe, OpenAI fallback) → build context packet → Claude → answer. Response:
-`{question, answer, speechId}`. Logs `QUESTION` and `ANSWER` (+ `SPOKEN`). Repeated questions
-get the same wording; mark `data.repeat = true` on the QUESTION event. An empty transcript
-returns `200 {question: "", answer: "I didn't catch that. You can ask me again.", speechId}` and
-logs no QUESTION. Missing STT/Claude keys return `503 {error}`.
+Body, preferred: `multipart/form-data` with `audio` (`audio/wav`, 16 kHz mono PCM16) **or** `text`,
+plus an optional `frame` (`image/jpeg`, ≤ 4 MB): the latest glasses frame, what the wearer is
+looking at as they ask. Legacy bodies still work: raw `audio/wav`, or JSON `{text}` (no frame).
+
+Server (`lib/realtime.ts`): one OpenAI Realtime WebSocket session per question, model
+`OPENAI_REALTIME_MODEL` (default `gpt-realtime-2.1`). The session gets the tone rules plus the
+context packet as `instructions`, `output_modalities: ["text"]`, and `turn_detection: null`. The
+frame goes in as an `input_image` user item; the audio is resampled 16 → 24 kHz (the only PCM rate
+the API takes) and sent through `input_audio_buffer.append` + `commit` so the server-side
+transcription (`OPENAI_REALTIME_TRANSCRIBE_MODEL`, default `gpt-4o-mini-transcribe`) produces the
+question text for the log; then `response.create`. The answer is **text**, spoken through the same
+ElevenLabs `speechId` path as every other line (one voice everywhere; the realtime model's own
+voice is not used). The frame lives in server memory for the request only: never written to disk,
+Blob, or the DB.
+
+Fallback: if `OPENAI_API_KEY` is missing or the realtime call fails (5xx/timeout) and
+`ANTHROPIC_API_KEY` is set, the old chain runs: transcribe (ElevenLabs Scribe, OpenAI fallback) →
+context packet → Claude, without the frame. Neither key → `503 {error}`.
+
+Response: `{question, answer, speechId, frame: boolean}` (`frame` = a picture was used). Logs
+`QUESTION` (`data: {normalized, source: "audio"|"text", frame, model, repeat, repeatOf?}`),
+`ANSWER` (`data.model`) and `SPOKEN`. Repeated questions (near-identical in the last 2 h) get the
+earlier answer word for word, whatever the model said this time. An empty transcript returns
+`200 {question: "", answer: "I didn't catch that. You can ask me again.", speechId}` and logs no
+QUESTION.
+
+### Live conversation: `POST /api/realtime/session` and `POST /api/realtime/turns`
+
+Turns are automatic: the wearer talks, pauses, and the glasses answer; nobody taps between turns.
+The audio path is **phone ↔ OpenAI directly**: `/api/realtime/session` mints a short-lived client
+secret (`POST https://api.openai.com/v1/realtime/client_secrets`, 10 min, API key stays on the
+server) whose session config carries everything (tone rules + `CHAT_RULES`, the context packet, the
+last 2 h of question/answer pairs so repeats get the same words, voice, turn detection). The Swift
+module (`RealtimeChat.swift`) opens `wss://api.openai.com/v1/realtime?model=...` with
+`Authorization: Bearer <clientSecret>` from `URLSessionWebSocketTask`; no conversation audio ever
+touches `apps/web`. The model answers in **its own voice** (`OPENAI_REALTIME_VOICE`, default
+`marin`, speed `REALTIME_SPEECH_SPEED` 0.9): 24 kHz PCM16 streamed to the phone and played through
+`AVAudioEngine` over the current route (A2DP). Recognitions and reminders keep the ElevenLabs voice.
+
+- `POST /api/realtime/session` (body `{}`) → `{sessionId, clientSecret, expiresAt, url, model, voice,
+  turnDetection, bargeIn, greeting, farewell}`. `503` without `OPENAI_API_KEY`, `502` if OpenAI refuses.
+- Turn detection (`lib/realtime.ts` `turnDetection()`): `server_vad` by default with
+  `silence_duration_ms` **1500** (API default 500; older speakers pause mid-sentence), threshold 0.5,
+  prefix 400 ms. Env: `REALTIME_TURN_DETECTION` (`server_vad` | `semantic_vad`), `REALTIME_SILENCE_MS`,
+  `REALTIME_VAD_THRESHOLD`, `REALTIME_PREFIX_MS`, `REALTIME_EAGERNESS` (semantic: `low` default).
+- Barge-in is **off** by default (`REALTIME_BARGE_IN=1` to allow): the phone closes the mic from
+  `response.created` until the last audio buffer has played (+300 ms), so the open-ear speakers next to
+  the temple mics cannot echo into a new turn. With barge-in, the phone stops playback on
+  `speech_started` and sends `conversation.item.truncate` with the ms actually played.
+- Greeting/farewell: the model says `greeting` ("I'm listening.") as soon as the session opens (an
+  out-of-band `response.create` with `conversation: "none"`), and `farewell` after 90 s with nobody
+  speaking, then the phone closes the socket. The screen shows "Conversation ended".
+- Frames: when the wearer starts a turn (`input_audio_buffer.speech_started`) and a glasses frame
+  ≤ 5 s old exists, the phone adds one `input_image` user item (768 px JPEG) before the audio item, so
+  "what is this?" works. OpenAI discards it with the session; nothing is stored anywhere.
+- `POST /api/realtime/turns` `{sessionId, question, answer, frame: boolean, model}` → `{ok, questionEventId,
+  repeat}`. Posted by the phone for every finished turn (the wearer's transcript from
+  `conversation.item.input_audio_transcription.completed`, the answer from the output transcript).
+  Logs `QUESTION` (`data: {normalized, source: "chat", sessionId, frame, transcribed, repeat, repeatOf?}`),
+  `ANSWER` and `SPOKEN` (`source: "chat"`, `speechId: null`, the words were spoken by the model). A
+  turn whose transcript never arrived (4 s grace) is logged with the question `(not transcribed)`.
+  The repeat rule can only be *encouraged* here (recent pairs are in the instructions); the server flags
+  `repeat` but cannot swap the words after they were spoken.
+- While a conversation runs, ambient `/api/utterances` chunks pause (the exchange would be logged twice).
+  Tap-to-ask (`/api/ask`) stays as the fallback the Live screen switches to if `startChat` fails.
 
 ### `POST /api/utterances`
 Body: raw `audio/wav` ~10 s ambient chunk. Response `{text}`; logs `UTTERANCE` when non-empty.
@@ -182,7 +249,7 @@ memories), `/people/[id]` (introduction editor, memories with "say this" toggles
   (`data:` = the event JSON as in `/api/events`), polling the DB every 1 s server-side, heartbeat
   comment every 15 s. Used by `/live` and the dashboard.
 
-## Context packet (`lib/context.ts`) sent to Claude on every ask
+## Context packet (`lib/context.ts`) sent to the model on every ask (realtime instructions, or Claude in the fallback)
 
 Wearer profile and tone rules (short, warm, declarative; one fact per sentence; never correct or
 quiz; same answer in same words for repeats); people recognized today with times and notes; last
@@ -206,8 +273,14 @@ enrollPerson(p: { name: string; relationship?: string; notes?: string; photoUris
   // < 0.4 against the seed is rejected ("That photo does not look like the same person").
   // Without a seed each photo's largest face is used (live capture, unchanged).
 captureGlassesPhoto(): Promise<string>       // file:// URI of a glasses photo
-startAsk(): Promise<void>                    // begins mic capture
-stopAsk(): Promise<{ question: string; answer: string }>  // uploads to /api/ask, speaks answer
+startAsk(): Promise<void>                    // begins mic capture; notes the frame on screen
+stopAsk(): Promise<{ question: string; answer: string; sawFrame: boolean }>
+  // multipart to /api/ask: the audio plus the newest glasses frame (≤ 5 s old, downscaled to
+  // 768 px, JPEG 0.75; falls back to the frame noted at startAsk), speaks the answer
+startChat(): Promise<{ sessionId; model; voice; bargeIn; turnDetection; silenceMs; micSource }>
+  // live conversation (above): mic → OpenAI directly, automatic turns, answers in the model's voice.
+  // Progress arrives as onChat events; ends on stopChat, 90 s of silence, or a dropped connection.
+stopChat(): Promise<{ ended: boolean; turns: number }>
 startListening(): Promise<void>              // begins mic capture for a Remember memory
 stopListening(): Promise<{ text: string }>   // uploads to /api/transcribe, returns the words (nothing spoken)
 speak(speechId: string, text: string): Promise<void>      // downloads /api/speech/id, plays over A2DP
@@ -259,6 +332,9 @@ onAudioRoute({ route: GlassesStatus["audioRoute"]; portName: string })
 onSpoken({ text: string; route: string; pan: number })      // after each line plays
 onError({ message: string })
 onPhotoIndex(status: PhotoIndexStatus)        // at most every 500 ms while indexing, and on every state change
+onChat(ev)  // { kind: "state", state: "connecting"|"listening"|"hearing"|"thinking"|"speaking"|"ended", reason?, sessionId }
+            // | { kind: "transcript", role: "user"|"assistant", text, final, sessionId }   (text = the turn so far)
+            // | { kind: "turn", question, answer, frame, route, sessionId }                 (also posted to /api/realtime/turns)
 
 View: <GlassesPreview style={...} />           // renders latest frame natively
 ```
@@ -275,7 +351,8 @@ nothing is sent to the server. The Apple-speech fallback plays centred (AVSpeech
 ## Environment (`apps/web/.env`, see `.env.example`)
 
 `DATABASE_URL`, `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`,
-`OPENAI_API_KEY` (STT fallback), `BLOB_READ_WRITE_TOKEN` (optional in dev), `RESEND_API_KEY`,
+`OPENAI_API_KEY` (ask answers via Realtime, and STT fallback), `BLOB_READ_WRITE_TOKEN` (optional in dev), `RESEND_API_KEY`,
 `EMAIL_FROM`, `APP_URL` (defaults to request Host), `PLACE`. Optional overrides:
 `APP_TIME_ZONE` (default `America/New_York`), `ELEVENLABS_MODEL_ID`, `ELEVENLABS_STT_MODEL`,
-`OPENAI_STT_MODEL`. Missing keys yield `503 {error}`, never a crash.
+`OPENAI_STT_MODEL`, `OPENAI_REALTIME_MODEL` (default `gpt-realtime-2.1`),
+`OPENAI_REALTIME_TRANSCRIBE_MODEL` (default `gpt-4o-mini-transcribe`). Missing keys yield `503 {error}`, never a crash.

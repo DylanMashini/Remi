@@ -52,6 +52,24 @@ export type PhotoIndexStatus = {
 
 export type PhotoCandidate = { id: string; score: number; thumbUri: string; takenAt: string };
 
+/** Live conversation (see CONTRACT.md "Live conversation"). */
+export type ChatState = 'connecting' | 'listening' | 'hearing' | 'thinking' | 'speaking' | 'ended';
+
+export type ChatStartResult = {
+  sessionId: string;
+  model: string;
+  voice: string;
+  bargeIn: boolean;
+  turnDetection: string;
+  silenceMs: number;
+  micSource: string;
+};
+
+export type ChatEvent =
+  | { kind: 'state'; state: ChatState; reason?: string | null; sessionId: string }
+  | { kind: 'transcript'; role: 'user' | 'assistant'; text: string; final: boolean; sessionId: string }
+  | { kind: 'turn'; question: string; answer: string; frame: boolean; route: string; sessionId: string };
+
 export type EnrollInput = {
   name: string;
   relationship?: string;
@@ -71,6 +89,8 @@ type Events = {
   onError: { message: string };
   /** The wearer pressed a button on the glasses (capture = top right of the right temple). */
   onButton: { button: 'capture' | 'action' };
+  /** Live conversation progress. */
+  onChat: ChatEvent;
 };
 
 type Subscription = { remove: () => void };
@@ -84,7 +104,9 @@ type NativeGlasses = {
   enrollPerson?: (p: EnrollInput) => Promise<{ personId: string; photos: number }>;
   captureGlassesPhoto?: () => Promise<string>;
   startAsk?: () => Promise<void>;
-  stopAsk?: () => Promise<{ question: string; answer: string }>;
+  stopAsk?: () => Promise<{ question: string; answer: string; sawFrame?: boolean }>;
+  startChat?: () => Promise<ChatStartResult>;
+  stopChat?: () => Promise<{ ended: boolean; turns: number }>;
   startListening?: () => Promise<void>;
   stopListening?: () => Promise<{ text: string }>;
   speak?: (speechId: string, text: string) => Promise<void>;
@@ -143,8 +165,16 @@ export const Glasses = {
   getStatus: () => call('getStatus')(),
   enrollPerson: (p: EnrollInput) => call('enrollPerson')(p),
   captureGlassesPhoto: () => call('captureGlassesPhoto')(),
+  /** Mic capture for a question; stopAsk uploads the audio plus the latest glasses frame to /api/ask and speaks the answer. */
   startAsk: () => call('startAsk')(),
   stopAsk: () => call('stopAsk')(),
+  /**
+   * Live conversation: the phone streams the mic straight to OpenAI's Realtime API and plays the
+   * answers over the glasses; the API decides when the wearer has finished speaking. Progress
+   * arrives as onChat events. Ends on stopChat, after 90 s of silence, or on a connection failure.
+   */
+  startChat: () => call('startChat')(),
+  stopChat: () => call('stopChat')(),
   /** Mic capture for a memory; stopListening uploads to /api/transcribe and returns the words. */
   startListening: () => call('startListening')(),
   stopListening: () => call('stopListening')(),
