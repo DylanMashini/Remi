@@ -82,9 +82,12 @@ export const api = {
   remember: (token: string, personId: string, knew: boolean) =>
     apiJson<{ line: string; speechId: string }>('/api/remember', { method: 'POST', token, json: { personId, knew } }),
 
-  events: (token: string, since?: Date, limit = 200) =>
+  /** Newest events first. `types` filters server-side so chatty UTTERANCE/SPOKEN rows do not crowd out the ones shown. */
+  events: (token: string, since?: Date, limit = 200, types?: EventType[]) =>
     apiJson<{ events: EventJson[] }>(
-      `/api/events?limit=${limit}${since ? `&since=${encodeURIComponent(since.toISOString())}` : ''}`,
+      `/api/events?limit=${limit}${since ? `&since=${encodeURIComponent(since.toISOString())}` : ''}${
+        types?.length ? `&types=${types.join(',')}` : ''
+      }`,
       { token }
     ).then((b) => b.events ?? []),
   deleteEvent: (token: string, eventId: string) =>

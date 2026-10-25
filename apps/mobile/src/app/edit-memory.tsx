@@ -70,7 +70,7 @@ export default function EditMemoryScreen() {
 
   const remove = () => {
     if (!token || !memory) return;
-    Alert.alert('Delete this memory?', 'It is removed from Recall for good.', [
+    Alert.alert('Delete this memory?', 'It is removed from Remi for good.', [
       { text: 'Keep', style: 'cancel' },
       {
         text: 'Delete',
@@ -119,7 +119,7 @@ export default function EditMemoryScreen() {
             label="The sentence the glasses say"
             value={callout}
             onChangeText={setCallout}
-            placeholder={editing ? '' : 'Leave empty and Recall writes one from your words.'}
+            placeholder={editing ? '' : 'Leave empty and Remi writes one from your words.'}
             hint='Second person, one short sentence: "She taught you to bake bread."'
           />
 

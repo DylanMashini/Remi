@@ -292,12 +292,36 @@ final class LocalRecognition {
     // `image` goes out of scope here: the frame is discarded, never written anywhere.
 
     guard !events.isEmpty else { return }
+
+    // Single roster line with a cached speechId: speak it now (the ElevenLabs audio was prefetched
+    // during roster sync) and let the server log the moment in the background. Waiting for the
+    // round trip on a weak hotspot could cost seconds, and the debounce is already claimed.
+    if let localSpeechId {
+      onSpeak?(localSpeechId, localText, pan)
+      Task {
+        do {
+          let data = try JSONSerialization.data(withJSONObject: ["events": events])
+          let req = try BackendClient.shared.request("/api/recognitions", method: "POST", contentType: "application/json", body: data, timeout: 8)
+          let obj = try await BackendClient.shared.sendJSON(req)
+          // The server's sentence may include a newer memory than the roster copy. Never speak a
+          // second line for the same moment; the roster catches up on the next sync.
+          if let speak = obj["speak"] as? [String: Any], let text = speak["text"] as? String, !text.isEmpty, text != localText {
+            NSLog("[Glasses] recognition: server line differs from spoken roster line. spoke: \"\(localText)\" server: \"\(text)\"")
+          }
+        } catch {
+          report("Recognition log failed (spoke locally): \(error.localizedDescription)")
+        }
+      }
+      return
+    }
+
     Task {
-      // The server logs RECOGNITION/UNKNOWN + SPOKEN and returns the canonical sentence (it may
-      // include a newer memory than the roster copy). If it is unreachable, speak the local line.
+      // No cached audio for this exact text (several people at once, or a roster copy without a
+      // speechId): the server logs RECOGNITION/UNKNOWN + SPOKEN and returns the canonical sentence
+      // with its speechId. If it is unreachable, speak the local line.
       do {
         let data = try JSONSerialization.data(withJSONObject: ["events": events])
-        let req = try BackendClient.shared.request("/api/recognitions", method: "POST", contentType: "application/json", body: data, timeout: 8)
+        let req = try BackendClient.shared.request("/api/recognitions", method: "POST", contentType: "application/json", body: data, timeout: 4)
         let obj = try await BackendClient.shared.sendJSON(req)
         if let speak = obj["speak"] as? [String: Any], let text = speak["text"] as? String, !text.isEmpty {
           onSpeak?(speak["speechId"] as? String, text, pan)
@@ -306,8 +330,7 @@ final class LocalRecognition {
       } catch {
         report("Recognition log failed (spoke locally): \(error.localizedDescription)")
       }
-      // Offline fallback: the roster's speechId is usually already cached on the phone, so this is
-      // still the ElevenLabs voice; Apple speech only if the audio was never fetched.
+      // Offline fallback: Apple speech (or whatever the Speaker has) for the local text.
       onSpeak?(localSpeechId, localText, pan)
     }
   }

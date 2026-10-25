@@ -83,6 +83,11 @@ final class RealtimeChat {
   private var farewellResponseId: String?
   private var idleTimer: Task<Void, Never>?
   private var micReopen: Task<Void, Never>?
+  /// True while Speaker (recognitions, reminders, /api/ask answers) is talking over the same glasses
+  /// speakers: the mic stays closed so server VAD does not hear that line as the wearer's turn.
+  private var micHeld = false
+  /// True from `response.created` until that response's audio has drained (or the chat ends).
+  private var responseInFlight = false
 
   init(config: Config) {
     self.config = config
@@ -114,6 +119,8 @@ final class RealtimeChat {
     guard !ended else { return }
     ended = true
     micOpen = false
+    micHeld = false
+    responseInFlight = false
     idleTimer?.cancel()
     micReopen?.cancel()
     turnGrace?.cancel()
@@ -158,7 +165,7 @@ final class RealtimeChat {
   }
 
   private func openMic() {
-    guard !ended, sessionReady else { return }
+    guard !ended, sessionReady, !micHeld else { return }
     micBuffer.removeAll(keepingCapacity: true)
     micOpen = true
     setState(.listening)
@@ -169,6 +176,33 @@ final class RealtimeChat {
     micOpen = false
     micBuffer.removeAll(keepingCapacity: true)
     micReopen?.cancel()
+  }
+
+  /// Another voice (Speaker) started a line on the glasses: close the mic until `releaseMic()`.
+  /// Safe to call repeatedly (one hold, however many lines are queued) and after the chat ended.
+  func holdMic() {
+    guard !ended, !micHeld else { return }
+    micHeld = true
+    if micOpen {
+      NSLog("[Chat] mic held while Remi speaks a line")
+      closeMic()
+    } else {
+      micReopen?.cancel()
+    }
+  }
+
+  /// Speaker's queue went idle. Reopens the mic after the usual tail, unless the model's own
+  /// response is still playing, in which case `playbackDrained` reopens it as it always does.
+  func releaseMic() {
+    guard micHeld else { return }
+    micHeld = false
+    guard !ended, !responseInFlight, !micOpen else { return }
+    micReopen?.cancel()
+    micReopen = Task { @MainActor [weak self] in
+      try? await Task.sleep(nanoseconds: 300_000_000)
+      guard let self, !Task.isCancelled else { return }
+      self.openMic()
+    }
   }
 
   // MARK: Idle
@@ -311,6 +345,7 @@ final class RealtimeChat {
       currentResponseId = id
       currentItemId = nil
       assistantText = ""
+      responseInFlight = true
       audioOut.beginResponse()
       if pendingScript, let id {
         pendingScript = false
@@ -429,6 +464,7 @@ final class RealtimeChat {
 
   private func playbackDrained() {
     guard !ended else { return }
+    responseInFlight = false
     if let fid = farewellResponseId, fid == currentResponseId {
       end(reason: "idle", error: nil)
       return

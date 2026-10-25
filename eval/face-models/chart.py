@@ -23,8 +23,8 @@ SERIES = {"clean": "#2a78d6", "face56": "#eb6834", "face40": "#1baf7a"}  # valid
 LABELS = {"clean": "clean photo vs clean photo", "face56": "clean vs 56 px frame", "face40": "clean vs 40 px frame"}
 ORDER = ["mbf", "edgeface_xs", "edgeface_s", "sface", "lvface_t", "r50", "r100"]
 SHORT = {
-    "mbf": "MobileFaceNet\n(shipped)", "edgeface_xs": "EdgeFace-XS", "edgeface_s": "EdgeFace-S", "sface": "SFace",
-    "lvface_t": "LVFace-T", "r50": "ResNet50\nArcFace", "r100": "ResNet100\nArcFace",
+    "mbf": "MobileFaceNet", "edgeface_xs": "EdgeFace-XS", "edgeface_s": "EdgeFace-S", "sface": "SFace",
+    "lvface_t": "LVFace-T", "r50": "ResNet50\nArcFace (shipped)", "r100": "ResNet100\nArcFace",
 }
 
 
@@ -65,12 +65,12 @@ def main() -> None:
     ax.set_xticks(range(len(models)), [SHORT[m] for m in models])
     ax.set_ylim((91, 100.4) if dots else (50, 102))
     ylabels = {
-        "e2e@phone": "accuracy at the phone's 0.50 threshold (%)",
+        "e2e@phone": "accuracy at the original 0.50 threshold (%)",
         "acc10": "LFW 10-fold accuracy (%)",
         "tar@0.1%": "same-person pairs recognized at 1-in-1,000 stranger accepts (%)",
     }
     titles = {
-        "e2e@phone": "Diagnosis: what the shipped 0.50 threshold does to each model",
+        "e2e@phone": "Diagnosis: what the README's 0.50 threshold did to each model",
         "acc10": "LFW 10-fold accuracy, phone pipeline",
         "tar@0.1%": "Who gets recognized: 6,000 LFW pairs through the phone pipeline",
     }
@@ -95,7 +95,7 @@ def main() -> None:
     ax2.set_yticks(list(ys), [SHORT[m].replace("\n", " ") for m in models])
     ax2.set_facecolor(SURFACE)
     ax2.set_xlim(0, max(lat) * 1.9)
-    ax2.set_xlabel("ms per face, Neural Engine (M4 Pro)")
+    ax2.set_xlabel("ms per face, Neural Engine")
     ax2.set_title("Cost per face", loc="left", fontsize=12, color=TEXT, pad=14)
     ax2.xaxis.grid(True, color=GRID, linewidth=0.8, zorder=0)
     ax2.set_axisbelow(True)

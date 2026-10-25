@@ -11,8 +11,8 @@ import {
   dismissReminder,
   panSide,
   pushSpoken,
+  refreshStatus,
   reportError,
-  setStatus,
   startChat,
   stopChat,
   useFeed,
@@ -27,8 +27,11 @@ const FACE_TTL_MS = 1500;
 
 function statusPill(status: GlassesStatus, portName: string | null): { tone: 'good' | 'idle' | 'attention'; label: string } {
   if (status.streaming && status.mock) return { tone: 'good', label: 'Phone camera' };
-  if (status.streaming && (status.audioRoute === 'speaker' || status.audioRoute === 'other')) {
-    return { tone: 'attention', label: portName && status.audioRoute === 'other' ? `Audio on ${portName}` : 'Audio on phone speaker' };
+  if (status.streaming && status.audioRoute === 'speaker') return { tone: 'attention', label: 'Audio on phone speaker' };
+  // Swift only reads the route when a line plays or the route changes, so at stream start it is
+  // 'other' with no port name even when A2DP is fine. Warn only once a non-Bluetooth port is confirmed.
+  if (status.streaming && status.audioRoute === 'other' && portName && portName !== 'none') {
+    return { tone: 'attention', label: `Audio on ${portName}` };
   }
   if (status.connection === 'connected') return { tone: 'good', label: 'Glasses connected' };
   if (status.connection === 'connecting') return { tone: 'idle', label: 'Connecting' };
@@ -133,7 +136,10 @@ export default function LiveScreen() {
     setStreamBusy(true);
     try {
       await Glasses.startStream(mock ? { mock: true } : undefined);
-      setStatus({ ...status, streaming: true, mock });
+      // The module already emitted onStatus; confirm from native rather than a stale snapshot.
+      await refreshStatus();
+      // A fresh stream gets the conversation back, even if an earlier attempt fell back to tap-to-ask.
+      setAskMode('chat');
     } catch (e) {
       reportError(e);
     } finally {
@@ -145,7 +151,7 @@ export default function LiveScreen() {
     setStreamBusy(true);
     try {
       await Glasses.stopStream();
-      setStatus({ ...status, streaming: false });
+      await refreshStatus();
     } catch (e) {
       reportError(e);
     } finally {
@@ -159,16 +165,23 @@ export default function LiveScreen() {
   const toggleChat = async () => {
     if (chatBusy) return;
     setChatBusy(true);
-    try {
-      if (chatRunning) {
+    if (chatRunning) {
+      try {
         await stopChat();
-      } else {
-        await startChat();
+      } catch (e) {
+        // Ending failed; the conversation is still the default. Never demote for a stop error.
+        reportError(`Could not end the conversation: ${errorMessage(e)}`);
+      } finally {
+        setChatBusy(false);
       }
+      return;
+    }
+    try {
+      await startChat();
     } catch (e) {
-      const msg = errorMessage(e);
-      reportError(`Conversation unavailable: ${msg}`);
-      // No realtime key on the server, or an old native build: fall back to tap-to-ask for now.
+      // No realtime key, an old native build, or a hotspot blip while minting the client secret.
+      // Offer tap-to-ask for now; "Try the conversation again" and a stream restart both undo this.
+      reportError(`Conversation unavailable: ${errorMessage(e)}. Tap to ask works in the meantime.`);
       setAskMode('tap');
     } finally {
       setChatBusy(false);
@@ -180,8 +193,8 @@ export default function LiveScreen() {
     if (wakeBusy) return;
     setWakeBusy(true);
     try {
-      const r = await Glasses.setWakeWord(on);
-      setStatus({ ...status, wakeWord: r.enabled });
+      await Glasses.setWakeWord(on);
+      await refreshStatus();
     } catch (e) {
       reportError(`"Hey Remi" unavailable: ${errorMessage(e)}`);
     } finally {
@@ -410,31 +423,41 @@ export default function LiveScreen() {
 
       <BottomBar>
         {status.streaming ? (
-          <View style={styles.actions}>
-            <IconButton name="stop.fill" label="Stop the glasses" onPress={stopStream} size={64} tone="sand" />
-            {askMode === 'chat' ? (
-              <Button
-                title={chatRunning ? 'End the conversation' : 'Ask Remi'}
-                icon={chatRunning ? undefined : 'waveform'}
-                variant={chatRunning ? 'night' : 'primary'}
-                size="large"
-                onPress={toggleChat}
-                loading={chatBusy || streamBusy}
-                style={{ flex: 1 }}
-                accessibilityHint="Starts a conversation. Remi answers each time the wearer finishes speaking; no need to tap again."
+          <View style={{ gap: Spacing.one }}>
+            <View style={styles.actions}>
+              <IconButton name="stop.fill" label="Stop the glasses" onPress={stopStream} size={64} tone="sand" />
+              {askMode === 'chat' ? (
+                <Button
+                  title={chatRunning ? 'End the conversation' : 'Ask Remi'}
+                  icon={chatRunning ? undefined : 'waveform'}
+                  variant={chatRunning ? 'night' : 'primary'}
+                  size="large"
+                  onPress={toggleChat}
+                  loading={chatBusy || streamBusy}
+                  style={{ flex: 1 }}
+                  accessibilityHint="Starts a conversation. Remi answers each time the wearer finishes speaking; no need to tap again."
+                />
+              ) : (
+                <Button
+                  title={ask === 'listening' ? 'Done' : ask === 'thinking' ? 'Remi is thinking' : 'Ask Remi'}
+                  icon={ask === 'idle' ? 'mic.fill' : undefined}
+                  variant={ask === 'listening' ? 'night' : 'primary'}
+                  size="large"
+                  onPress={toggleAsk}
+                  loading={ask === 'thinking' || streamBusy}
+                  style={{ flex: 1 }}
+                  accessibilityHint="Tap, let the wearer ask Remi a question out loud, then tap Done"
+                />
+              )}
+            </View>
+            {/* The fallback is per attempt, never permanent: one tap brings the conversation back. */}
+            {askMode === 'tap' && ask === 'idle' ? (
+              <TextButton
+                title="Try the conversation again"
+                onPress={() => setAskMode('chat')}
+                style={{ alignSelf: 'center' }}
               />
-            ) : (
-              <Button
-                title={ask === 'listening' ? 'Done' : ask === 'thinking' ? 'Remi is thinking' : 'Ask Remi'}
-                icon={ask === 'idle' ? 'mic.fill' : undefined}
-                variant={ask === 'listening' ? 'night' : 'primary'}
-                size="large"
-                onPress={toggleAsk}
-                loading={ask === 'thinking' || streamBusy}
-                style={{ flex: 1 }}
-                accessibilityHint="Tap, let the wearer ask Remi a question out loud, then tap Done"
-              />
-            )}
+            ) : null}
           </View>
         ) : (
           <View style={{ gap: Spacing.one }}>

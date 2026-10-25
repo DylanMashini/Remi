@@ -62,7 +62,7 @@ export default function PersonScreen() {
     if (!person || !token) return;
     Alert.alert(
       `Remove ${firstName(person.name)}?`,
-      `Recall will stop recognizing ${firstName(person.name)} and delete their photos and memories. Past moments stay in Today without a name.`,
+      `Remi will stop recognizing ${firstName(person.name)} and delete their photos and memories. Past moments stay in Today without a name.`,
       [
         { text: 'Keep', style: 'cancel' },
         {
@@ -190,7 +190,7 @@ export default function PersonScreen() {
               loading={removing}
               style={{ marginTop: Spacing.two }}
             />
-            <Text style={styles.footnote}>Removing deletes their photos, face data and memories from Recall.</Text>
+            <Text style={styles.footnote}>Removing deletes their photos, face data and memories from Remi.</Text>
           </>
         )}
       </ScrollView>

@@ -7,6 +7,7 @@ import { isRepeat } from "@/components/events";
 import { dayKey, formatAgo, formatShortDay, formatTime, TIME_ZONE, weekdayShort } from "@/components/format";
 import { ClockIcon, PersonIcon, QuestionIcon, RepeatIcon } from "@/components/icons";
 import { EmptyState, Group, PageHeader, PageSkeleton, Row, RowIcon } from "@/components/ui";
+import { addDays, instantAt, localDayKey } from "@/lib/medications";
 import { prisma } from "@/lib/prisma";
 
 export const metadata: Metadata = { title: "Insights" };
@@ -25,8 +26,9 @@ async function Insights() {
   const { patientId, patientName, user } = await getCare();
   const self = user.role === "WEARER";
   const now = new Date();
-  const since = new Date(now.getTime() - DAYS * 24 * 60 * 60 * 1000);
-  since.setHours(0, 0, 0, 0);
+  // Seven local days (today and the six before it) in the app time zone, not server-local.
+  const todayKey = localDayKey(now);
+  const since = instantAt(addDays(todayKey, -(DAYS - 1)), "00:00");
 
   const [events, people] = await Promise.all([
     prisma.event.findMany({
@@ -42,8 +44,8 @@ async function Insights() {
   // Days, oldest first, with recognitions and spoken counts per day.
   const days: { key: string; date: Date; recognitions: number; spoken: number; unknown: number }[] = [];
   for (let i = DAYS - 1; i >= 0; i--) {
-    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-    days.push({ key: dayKey(d), date: d, recognitions: 0, spoken: 0, unknown: 0 });
+    const key = addDays(todayKey, -i);
+    days.push({ key, date: instantAt(key, "00:00"), recognitions: 0, spoken: 0, unknown: 0 });
   }
   const byDay = new Map(days.map((d) => [d.key, d]));
   const seenPerPerson = new Map<string, { count: number; last: Date }>();

@@ -130,6 +130,6 @@ export function photoIndexDetail(s: PhotoIndexStatus | null): string {
     default:
       return s.error
         ? `Could not index: ${s.error}`
-        : 'Not indexed. Recall can find photos of a person when you add them.';
+        : 'Not indexed. Remi can find photos of a person when you add them.';
   }
 }

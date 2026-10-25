@@ -12,13 +12,13 @@ export default function WhoScreen() {
       </View>
       <ScreenHeader
         title="Who will wear the glasses?"
-        lead="This shapes how Recall speaks and what you see on this phone. You can add family later."
+        lead="This shapes how Remi speaks and what you see on this phone. You can add family later."
       />
       <View style={styles.choices}>
         <ChoiceCard
           icon="person.fill"
           title="I will"
-          body="I'm setting Recall up for myself."
+          body="I'm setting Remi up for myself."
           onPress={() => router.push({ pathname: '/(auth)/create', params: { role: 'WEARER' } })}
         />
         <ChoiceCard
@@ -30,7 +30,7 @@ export default function WhoScreen() {
       </View>
       <View style={styles.footer}>
         <Secondary>
-          Either way, Recall only recognizes people you add. Camera frames are never saved.
+          Either way, Remi only recognizes people you add. Camera frames are never saved.
         </Secondary>
       </View>
     </Screen>

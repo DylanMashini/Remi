@@ -77,9 +77,18 @@ is on the ResNet50 scale since Oct 24 night (strangers rarely above 0.15, same p
 the server stores it as data only and nothing filters or colours by it.
 Response `{speak: {speechId, text}}` (or `{}` when nothing is said). The server logs
 `RECOGNITION` / `UNKNOWN` (with `data.score`, `data.box`, `data.source = "device"`) and `SPOKEN`,
-and builds the line (`knownLine` in `lib/line.ts`, including the newest memory). The phone speaks
-the returned text; if the request fails it speaks the roster copy of `line` (Apple speech) so the
-wearer is never left in silence. The server does **not** re-debounce; the phone is authoritative.
+and builds the line (`knownLine` in `lib/line.ts`, including the newest memory). The server does
+**not** re-debounce; the phone is authoritative.
+
+Speak first, log second (Oct 25). When the frame yields one line whose roster `speechId` is cached,
+the phone speaks that roster copy the instant the match is made and posts the identical body in the
+background purely for the log (8 s timeout; a failure is logged, nothing is re-spoken). If the
+server's `speak.text` differs (a note edited since the last roster sync) it is only logged; the
+SPOKEN row then carries the newer text while the wearer heard the roster copy (roster re-syncs on
+every stream start and after enrollment). Only when there is no cached `speechId` (several people
+in one sentence, or a roster entry without one) does the phone wait for the server's `speechId`/text
+(4 s timeout), falling back to the roster `line` on failure so the wearer is never left in silence.
+`whoIsHere` (glasses button / on demand) still waits for the server's combined sentence (8 s).
 An unknown `personId` is `404`; an empty `events` array is `400` (unless `trigger` is set, below).
 
 - Known line: `This is {name}, your {relationship}. {notes} {memory}` (omit missing parts).
@@ -117,6 +126,14 @@ only ever calls this route. Swift caches each download in `Library/Caches/speech
 prefetches every roster `speechId` (plus `unknown.speechId`) when the roster syncs, so a
 recognition normally plays from disk with no network wait. Swift falls back to
 `AVSpeechSynthesizer` with the `text` it already has if the audio cannot be fetched or decoded.
+
+Queue safety (Oct 25): `Speaker` plays lines strictly one at a time, so a line that never finishes
+would wedge every later line for the session. A line is now dropped (logged `dropping line:`) and
+the queue continues when: the output route changes while its player is paused (glasses out of range
+mid-line, `.oldDeviceUnavailable`); a watchdog fires, max(10 s, 2x the clip) once audio plays, 30 s
+while downloading or on Apple speech; or an interruption begins (pre-existing). A download that lands
+after its line was dropped is cached but not played; stale player/synth callbacks cannot finish a
+later line. A dropped line still fires `onSpoken`, so the log says it was spoken even if cut short.
 
 ### `POST /api/ask`
 Body, preferred: `multipart/form-data` with `audio` (`audio/wav`, 16 kHz mono PCM16) **or** `text`,
@@ -168,6 +185,11 @@ touches `apps/web`. The model answers in **its own voice** (`OPENAI_REALTIME_VOI
   `response.created` until the last audio buffer has played (+300 ms), so the open-ear speakers next to
   the temple mics cannot echo into a new turn. With barge-in, the phone stops playback on
   `speech_started` and sends `conversation.item.truncate` with the ms actually played.
+- Remi's own lines during a conversation: when `Speaker` plays an ElevenLabs line (recognition,
+  reminder, who-is-here) while a chat runs, the chat mic is held closed from the first line until the
+  queue empties, then reopened 300 ms later (or by the normal `playbackDrained` path if a model
+  response is still in flight). A chat started mid-line opens with its mic held. A wearer mid-sentence
+  is cut off and resumes after the line; the trade is no echo turn and no two voices at once.
 - Greeting/farewell: the model says `greeting` ("I'm listening.") as soon as the session opens (an
   out-of-band `response.create` with `conversation: "none"`), and `farewell` after 90 s with nobody
   speaking, then the phone closes the socket. The screen shows "Conversation ended".
@@ -183,7 +205,9 @@ touches `apps/web`. The model answers in **its own voice** (`OPENAI_REALTIME_VOI
   The repeat rule can only be *encouraged* here (recent pairs are in the instructions); the server flags
   `repeat` but cannot swap the words after they were spoken.
 - While a conversation runs, ambient `/api/utterances` chunks pause (the exchange would be logged twice).
-  Tap-to-ask (`/api/ask`) stays as the fallback the Live screen switches to if `startChat` fails.
+  Tap-to-ask (`/api/ask`) stays as the fallback the Live screen switches to if `startChat` rejects.
+  The demotion is per attempt: a "Try the conversation again" link or any stream restart restores
+  conversation mode; a failing `stopChat` reports an error and does not demote.
 
 ### `POST /api/utterances`
 Body: raw `audio/wav` ~10 s ambient chunk. Response `{text}`; logs `UTTERANCE` when non-empty.
@@ -224,8 +248,9 @@ these for on-device recognition). `line` is the exact sentence the glasses say f
 The spoken line for a known person is `knownLine` in `lib/line.ts`:
 `This is {name}, your {relationship}. {notes} {memory}` where `memory` is the `calloutText` of the
 newest `Memory` with `useInCallout = true`. `lib/people.ts` and the web/mobile `knownLine` /
-`introductionLine` helpers build the same string. The phone keeps a copy of `line` in its roster
-as an offline fallback, but speaks the server's text from `/api/recognitions` when reachable.
+`introductionLine` helpers build the same string. The phone keeps a copy of `line` (and its
+`speechId`) in its roster and speaks that copy for a single recognized person; the server's text from
+`/api/recognitions` is spoken only when no cached `speechId` applies (see "Speak first, log second").
 
 `Memory = {id, personId, text, calloutText, useInCallout, source, createdAt, updatedAt}`;
 `source` is `WEARER_VOICE | WEARER_TYPED | CAREGIVER`. `text` is the speaker's own words, kept
@@ -254,7 +279,13 @@ memories), `/people/[id]` (introduction editor, memories with "say this" toggles
 
 ## Caregiver
 
-- `GET /api/events?since=<iso>&limit=` → `{events: [{id, type, text, personId, personName, data, createdAt}]}` newest first.
+- `GET /api/events?since=<iso>&limit=&types=` → `{events: [{id, type, text, personId, personName, data, createdAt}]}` newest first.
+  `since` is `createdAt > since`; `limit` 1 to 500 (default 100). `types` (Oct 25) is a comma-separated
+  list of `EventType` names (`RECOGNITION, UNKNOWN, UTTERANCE, QUESTION, ANSWER, REMINDER, SPOKEN,
+  PRACTICE`, case-insensitive); only those types are returned and the `limit` window is computed over
+  them, so chatter rows cannot evict the day's moments. Unknown names are ignored; none valid or the
+  param absent means no filter. The Today tab asks for
+  `types=RECOGNITION,UNKNOWN,QUESTION,ANSWER,REMINDER,PRACTICE`; web `/live` sends no `types`.
 - `DELETE /api/events/[id]` → `204`.
 - `POST /api/reminders` `{text, dueAt}` → `201 {reminder}`; `GET /api/reminders` → `{reminders}`; `DELETE /api/reminders/[id]`.
   `Reminder` now also carries `medicationId` (null for a plain reminder), `takenAt` and
@@ -271,8 +302,14 @@ memories), `/people/[id]` (introduction editor, memories with "say this" toggles
   due | said | taken | skipped | missed-setup`. The context packet lists medications and today's dose
   status so "did I take my pills?" is answered from the record, never guessed.
 - `GET /api/stream` → SSE (`text/event-stream`), one `event: event` per new Event row
-  (`data:` = the event JSON as in `/api/events`), polling the DB every 1 s server-side, heartbeat
-  comment every 15 s. Used by `/live` and the dashboard.
+  (`data:` = the event JSON as in `/api/events`, `id:` = the event id), polling the DB every 1 s
+  server-side, heartbeat comment every 15 s. Used by `/live` and the dashboard.
+  Resume (Oct 25): the browser's automatic retry sends `Last-Event-ID`; when it names an Event of
+  this patient the cursor starts at that row's `createdAt` (same-ms siblings with a later id are
+  replayed, nothing is sent twice), so events created across Vercel's 300 s connection cut are not
+  lost. An unknown or foreign id starts from "now" as before. `/live` also refetches `/api/events`
+  and `/api/reminders` on every (re)connect, polls `/api/events` every 10 s while not live (never
+  when signed out), and recreates a permanently closed `EventSource` after 5 s. Clients dedupe by id.
 
 ## Context packet (`lib/context.ts`) sent to the model on every ask (realtime instructions, or Claude in the fallback)
 
@@ -289,6 +326,10 @@ register(): Promise<void>                    // DAT registration via Meta AI app
 startStream(opts?: { mock?: boolean }): Promise<void>
   // camera 504x896 @ 7 fps, faces matched on the phone. mock=true runs the same pipeline on
   // MockDeviceKit with the phone's back camera (fallback demo path); status.mock becomes true.
+  // Concurrent calls share one start. Stop -> Start waits (<= 5 s) for the previous Camera to reach
+  // .stopped before re-adding it; if the SDK still refuses, the session is rebuilt once and retried.
+  // The phone's idle timer is disabled while streaming (frames only arrive in the foreground) and
+  // restored on every stop path. audioRoute is read from AVAudioSession at stream start.
 stopStream(): Promise<void>
 getStatus(): Promise<GlassesStatus>
 enrollPerson(p: { name: string; relationship?: string; notes?: string; photoUris: string[]; seedPhotoUri?: string }):
@@ -353,6 +394,8 @@ type GlassesStatus = {
   connection: "disconnected" | "connecting" | "connected";
   streaming: boolean;
   audioRoute: "a2dp" | "hfp" | "speaker" | "other";
+    // read at stream start and on every route change / spoken line. "other" with an empty or "none"
+    // portName means not yet known; the Live pill warns only on "speaker" or a named non-BT port.
   mock: boolean;
   rosterPeople: number;        // on-device roster size (people, embedded photos)
   rosterSamples: number;
@@ -362,7 +405,8 @@ type GlassesStatus = {
 Events:
 onStatus(status: GlassesStatus)
 onFrameResult({ faces: Face[]; speak?: { speechId: string; text: string; pan: number }; frameWidth: number; frameHeight: number })
-  // matched on the phone; speak.speechId is "" until /api/recognitions answers
+  // matched on the phone; speak.speechId is the cached roster id (spoken immediately), or "" until
+  // /api/recognitions answers when no roster speechId applies
 onAudioRoute({ route: GlassesStatus["audioRoute"]; portName: string })
 onSpoken({ text: string; route: string; pan: number })      // after each line plays
 onError({ message: string })

@@ -383,8 +383,8 @@ export default function AddPersonScreen() {
               title="Suggest photos from your library"
               body={
                 wearer
-                  ? 'Recall can find photos of the people you add in your own photos, on this phone. Nothing leaves the phone.'
-                  : `Recall can find photos of the people you add for ${who} in your own photos, on this phone. Nothing leaves the phone.`
+                  ? 'Remi can find photos of the people you add in your own photos, on this phone. Nothing leaves the phone.'
+                  : `Remi can find photos of the people you add for ${who} in your own photos, on this phone. Nothing leaves the phone.`
               }
               onDismiss={closeIndexNotice}
               action={

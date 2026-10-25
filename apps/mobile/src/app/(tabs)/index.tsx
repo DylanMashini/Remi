@@ -61,7 +61,8 @@ export default function TodayScreen() {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const [ev, rem] = await Promise.all([api.events(token, startOfToday(), 200), api.reminders(token)]);
+      // Filter server-side so the newest-200 window holds only the moments this tab shows; the client filter stays as a guard.
+      const [ev, rem] = await Promise.all([api.events(token, startOfToday(), 200, SHOWN), api.reminders(token)]);
       setEvents(ev.filter((e) => SHOWN.includes(e.type)));
       setReminders(rem.filter((r) => !r.firedAt).sort((a, b) => +new Date(a.dueAt) - +new Date(b.dueAt)));
       setError(null);
@@ -84,7 +85,7 @@ export default function TodayScreen() {
 
   const deleteEvent = (e: EventJson) => {
     if (!token) return;
-    Alert.alert('Delete this moment?', 'It is removed from Recall for good.', [
+    Alert.alert('Delete this moment?', 'It is removed from Remi for good.', [
       { text: 'Keep', style: 'cancel' },
       {
         text: 'Delete',

@@ -113,6 +113,20 @@ export function setStatus(status: GlassesStatus) {
   set({ status });
 }
 
+/**
+ * Re-reads the module's status after a call that changes it (start/stop stream, wake word).
+ * The Swift module emits onStatus before those calls resolve, so this only confirms; callers must
+ * never spread a render-time snapshot over the store, which replaces fresh connection/audioRoute
+ * values with stale ones.
+ */
+export async function refreshStatus() {
+  try {
+    set({ status: await Glasses.getStatus() });
+  } catch (e) {
+    console.warn('[feed] getStatus failed:', errorMessage(e));
+  }
+}
+
 export function reportError(e: unknown) {
   set({ error: { message: errorMessage(e), at: Date.now() } });
 }

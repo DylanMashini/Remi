@@ -72,7 +72,7 @@ export default function SettingsScreen() {
   const indexTitle = indexing ? 'Pause' : photoIndex?.state === 'paused' ? 'Resume' : indexDone ? 'Index again' : 'Index photos';
   const indexHasData = !!photoIndex && (photoIndex.faces > 0 || photoIndex.indexed > 0);
   const confirmClearIndex = () =>
-    Alert.alert('Clear the photo index?', 'Recall forgets the faces it found in your photos. You can index again any time.', [
+    Alert.alert('Clear the photo index?', 'Remi forgets the faces it found in your photos. You can index again any time.', [
       { text: 'Keep it', style: 'cancel' },
       { text: 'Clear', style: 'destructive', onPress: () => run('indexClear', clearPhotoIndex, 'Photo index cleared.') },
     ]);

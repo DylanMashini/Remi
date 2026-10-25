@@ -28,7 +28,18 @@ final class GlassesController {
       if streaming != oldValue {
         PhotoIndex.shared.setStreaming(streaming)
         updateWakeActive()
+        // Raw DAT frames only arrive while foregrounded; auto-lock would silently end recognition
+        // while the status still said "streaming". Keep the screen awake for the life of a stream.
+        setKeepAwake(streaming)
       }
+    }
+  }
+
+  /// `isIdleTimerDisabled` must be touched on the main thread; this class is @MainActor.
+  private func setKeepAwake(_ on: Bool) {
+    if UIApplication.shared.isIdleTimerDisabled != on {
+      UIApplication.shared.isIdleTimerDisabled = on
+      NSLog("[Glasses] keep awake: \(on)")
     }
   }
   private(set) var mock = false
@@ -37,6 +48,13 @@ final class GlassesController {
   private var mockGlasses: (any MockGlasses)?
   private var session: DeviceSession?
   private var camera: Camera?
+  /// The camera `stopStream` just stopped. `Camera.stop()` is async (.stopping -> .stopped) and the
+  /// SDK has no removeCamera, so `addCamera` on the same session throws capabilityAlreadyActive until
+  /// it has reached .stopped; `startStream` waits for it first.
+  private var stoppingCamera: Camera?
+  /// The start sequence in flight, shared by concurrent callers (Live screen + captureGlassesPhoto).
+  private var startTask: Task<Void, Error>?
+  private var startSeq = 0
   private var audioEnabledInStream = false
   private var registrationToken: (any AnyListenerToken)?
   /// Bluetooth link of the glasses as Meta AI reports it, independent of any DAT session. A session
@@ -100,7 +118,14 @@ final class GlassesController {
       Task { @MainActor in self?.emitError(msg) }
     }
     speaker.onSpeakingChanged = { [weak self] on in
-      Task { @MainActor in self?.wake?.setMuted(on) }
+      Task { @MainActor in
+        guard let self else { return }
+        self.speakerSpeaking = on
+        self.wake?.setMuted(on)
+        // A live conversation must not hear Remi's own line (recognition, reminder, answer) as the
+        // wearer's turn: hold the chat mic while Speaker talks, release it when the queue is idle.
+        if on { self.chat?.holdMic() } else { self.chat?.releaseMic() }
+      }
     }
     speaker.configureSession()
 
@@ -250,6 +275,14 @@ final class GlassesController {
     emit("onStatus", status())
   }
 
+  /// Glasses paired before launch never post a route-change notification, so without this the
+  /// status says "other" (shown as phone speaker) until the first spoken line. Speaker.checkRoute()
+  /// also fires onRoute (-> onAudioRoute) via a main-actor Task; the route is assigned here
+  /// synchronously so the emitStatus that follows in the caller already carries it.
+  private func refreshAudioRoute() {
+    audioRoute = speaker.checkRoute()
+  }
+
   // MARK: Registration
 
   func register() async throws {
@@ -275,7 +308,22 @@ final class GlassesController {
 
   func startStream(mock wantMock: Bool) async throws {
     setup()
+    // Two callers at once (the Live screen and captureGlassesPhoto) share one start sequence
+    // instead of both calling addCamera on the same session.
+    if let inFlight = startTask {
+      try await inFlight.value
+      if streaming && wantMock == mock { return }
+    }
     if streaming && wantMock == mock { return }
+    startSeq += 1
+    let seq = startSeq
+    let task = Task { @MainActor [self] in try await self.runStartStream(mock: wantMock) }
+    startTask = task
+    defer { if startSeq == seq { startTask = nil } }
+    try await task.value
+  }
+
+  private func runStartStream(mock wantMock: Bool) async throws {
     if wantMock != mock || streaming {
       await stopStream()
       await tearDownSession()
@@ -303,32 +351,25 @@ final class GlassesController {
       NSLog("[Glasses] microphone permission unavailable: \(error); using phone mic fallback")
     }
 
-    let session = try await ensureSession()
-    attachInputs(to: session)
-
-    var config = StreamConfiguration(
-      videoCodec: .raw,
-      audioCodec: mic ? .pcm(sampleRate: .rate16000, numberOfChannels: 1) : nil,
-      resolution: .medium,
-      frameRate: 7
-    )
-    var cameraCap: Camera?
+    // Stop -> Start on the same session: the previous camera must finish stopping first.
+    await waitForCameraStopped()
+    var session = try await ensureSession()
+    let camera: Camera
     do {
-      cameraCap = try session.addCamera(config: config)
+      camera = try addCamera(to: session, mic: &mic)
     } catch {
-      if mic {
-        NSLog("[Glasses] addCamera with audio failed (\(error)); retrying video only")
-        mic = false
-        config = StreamConfiguration(videoCodec: .raw, resolution: .medium, frameRate: 7)
-        cameraCap = try session.addCamera(config: config)
-      } else {
-        throw GlassesError("addCamera failed: \(error.description)")
-      }
+      // Still capabilityAlreadyActive (or anything else): a fresh session always accepts a camera.
+      NSLog("[Glasses] \(error.localizedDescription); recreating the session and retrying once")
+      await tearDownSession()
+      stoppingCamera = nil
+      session = try await ensureSession()
+      camera = try addCamera(to: session, mic: &mic)
     }
-    guard let camera = cameraCap else { throw GlassesError("addCamera returned nil (session not started)") }
+    attachInputs(to: session)
     self.camera = camera
     audioEnabledInStream = mic
     attachStreamListeners(camera.stream, audio: mic)
+    refreshAudioRoute()
 
     // Frames are only matched once the model is in memory (no "model not loaded" drops on first launch).
     try await FaceRecognizer.shared.loadAsync()
@@ -346,6 +387,8 @@ final class GlassesController {
 
     // `streaming` flipping true also pauses the library indexer (see its didSet).
     try await waitUntil(timeout: 20, "camera stream to start") { [weak self] in self?.streaming == true }
+    // The stream is up: read the route again so the deferred emitStatus reports where Remi will speak.
+    refreshAudioRoute()
 
     // If the glasses don't deliver audio within a few seconds, use the phone mic for ambient.
     Task { @MainActor [weak self] in
@@ -359,12 +402,62 @@ final class GlassesController {
     LocalRecognition.shared.setActive(false)
     audio.stopAll()
     await streamTokens.cancelAll()
-    camera?.stop()
+    if let c = camera {
+      c.stop()
+      stoppingCamera = c
+    }
     camera = nil
     if streaming { streaming = false }
+    setKeepAwake(false)
     failPhoto(GlassesError("Stream stopped"))
     FrameHub.shared.publish(nil)
     emitStatus()
+  }
+
+  /// Adds the camera to `session`, dropping in-band audio (video only) if that is what fails.
+  /// `mic` is cleared when the fallback was used. Throws when the session refuses a camera.
+  private func addCamera(to session: DeviceSession, mic: inout Bool) throws -> Camera {
+    var config = StreamConfiguration(
+      videoCodec: .raw,
+      audioCodec: mic ? .pcm(sampleRate: .rate16000, numberOfChannels: 1) : nil,
+      resolution: .medium,
+      frameRate: 7
+    )
+    var cameraCap: Camera?
+    do {
+      cameraCap = try session.addCamera(config: config)
+    } catch {
+      // A previous camera the SDK is still tearing down is not fixed by dropping audio.
+      if mic, error != .capabilityAlreadyActive {
+        NSLog("[Glasses] addCamera with audio failed (\(error)); retrying video only")
+        mic = false
+        config = StreamConfiguration(videoCodec: .raw, resolution: .medium, frameRate: 7)
+        do {
+          cameraCap = try session.addCamera(config: config)
+        } catch {
+          throw GlassesError("addCamera failed: \(error.description)")
+        }
+      } else {
+        throw GlassesError("addCamera failed: \(error.description)")
+      }
+    }
+    guard let camera = cameraCap else { throw GlassesError("addCamera returned nil (session not started)") }
+    return camera
+  }
+
+  /// Waits (at most 5 s) for the camera `stopStream` stopped to reach .stopped. The SDK keeps the
+  /// capability active until then and a second addCamera throws capabilityAlreadyActive.
+  private func waitForCameraStopped() async {
+    guard let old = stoppingCamera else { return }
+    if old.state != .stopped {
+      NSLog("[Glasses] waiting for the previous camera to stop (\(old.state))")
+      do {
+        try await waitUntil(timeout: 5, "previous camera to stop") { old.state == .stopped }
+      } catch {
+        NSLog("[Glasses] previous camera still \(old.state) after 5 s; adding a new one anyway")
+      }
+    }
+    if stoppingCamera === old { stoppingCamera = nil }
   }
 
   private func setMock(_ on: Bool) throws {
@@ -454,6 +547,8 @@ final class GlassesController {
     session?.stop()
     session = nil
     sessionState = nil
+    // A fresh session accepts a camera regardless of the old one; do not wait on an orphaned camera.
+    stoppingCamera = nil
   }
 
   private func sessionStateChanged(_ state: DeviceSessionState) {
@@ -462,7 +557,9 @@ final class GlassesController {
     if state == .stopped {
       // Hinges closed / BT dropped: the session is terminal. Next startStream creates a new one.
       camera = nil
+      stoppingCamera = nil
       streaming = false
+      setKeepAwake(false)
       LocalRecognition.shared.setActive(false)
       audio.stopAll()
       streamTokens.clear()
@@ -729,6 +826,8 @@ final class GlassesController {
 
   /// The running conversation, if any. One at a time.
   private var chat: RealtimeChat?
+  /// Mirrors Speaker.onSpeakingChanged, so a chat started mid-line begins with its mic held.
+  private var speakerSpeaking = false
   /// End a conversation after this long with nobody speaking.
   private static let chatIdleSeconds: TimeInterval = 90
 
@@ -794,6 +893,7 @@ final class GlassesController {
     let preroll = try audio.startChat()
     if trigger == "wake" { c.preroll = preroll }
     chat = c
+    if speakerSpeaking { c.holdMic() }
     updateWakeActive()
     do {
       try c.start()

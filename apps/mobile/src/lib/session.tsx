@@ -77,7 +77,7 @@ export async function apiFetch(
       },
     });
   } catch {
-    throw new Error("Can't reach Recall right now. Check the connection and try again.");
+    throw new Error("Can't reach Remi right now. Check the connection and try again.");
   } finally {
     clearTimeout(timer);
   }

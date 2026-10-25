@@ -34,6 +34,14 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
   private var player: AVAudioPlayer?
   private let synth = AVSpeechSynthesizer()
   private var downloadTask: Task<Void, Never>?
+  /// Incremented every time `current` changes. A download or watchdog started for one line checks
+  /// it before acting, so a late result never plays over (or finishes) a later line.
+  private var lineSeq = 0
+  private var watchdog: DispatchWorkItem?
+  /// The utterance speaking the current line. stopSpeaking (watchdog, interruption) delivers didCancel
+  /// after finishCurrent has already moved on to the next line; without this check that stale
+  /// callback would finish the next line before it is spoken.
+  private var currentUtterance: AVSpeechUtterance?
 
   override init() {
     super.init()
@@ -87,8 +95,42 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
 
   var route: String { currentRoute }
 
+  /// When the Bluetooth route disappears mid-line (glasses folded, powered off, out of range) iOS
+  /// pauses the AVAudioPlayer and never calls audioPlayerDidFinishPlaying, so without this `current`
+  /// stays set and every later line queues silently for the rest of the session (same failure class
+  /// as the Spotify interruption below). A paused player on a route change means the line is lost;
+  /// drop it and move on. A player that is still playing after the change is left alone.
   @objc private func routeChanged(_ note: Notification) {
-    DispatchQueue.main.async { _ = self.checkRoute() }
+    let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+    let reason = raw.flatMap { AVAudioSession.RouteChangeReason(rawValue: $0) }
+    DispatchQueue.main.async {
+      _ = self.checkRoute()
+      guard let line = self.current, let p = self.player else { return }
+      if p.isPlaying || self.synth.isSpeaking { return }
+      let why = reason == .oldDeviceUnavailable ? "output device went away" : "route changed (reason \(raw ?? 0))"
+      NSLog("[Glasses] \(why) while a line was paused; dropping line: \(line.text)")
+      p.stop()
+      self.finishCurrent()
+    }
+  }
+
+  // MARK: Watchdog
+
+  /// Guarantees the queue never wedges on a line whose finish callback never arrives (route lost,
+  /// download hung, synth stalled). Re-armed whenever a line starts downloading or playing; cancelled
+  /// when `current` changes. Fires only if the same line is still current.
+  private func armWatchdog(seconds: TimeInterval) {
+    watchdog?.cancel()
+    let seq = lineSeq
+    let item = DispatchWorkItem { [weak self] in
+      guard let self, self.lineSeq == seq, let line = self.current else { return }
+      NSLog("[Glasses] speech watchdog: line still current after \(Int(seconds)) s, dropping: \(line.text)")
+      self.player?.stop()
+      if self.synth.isSpeaking { self.synth.stopSpeaking(at: .immediate) }
+      self.finishCurrent()
+    }
+    watchdog = item
+    DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: item)
   }
 
   /// Another app (music, a call, Siri) took the audio session. An interrupted AVAudioPlayer never
@@ -219,6 +261,8 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     guard current == nil, !queue.isEmpty else { return }
     let line = queue.removeFirst()
     current = line
+    lineSeq &+= 1
+    let seq = lineSeq
     onSpeakingChanged?(true)
     configureSession()
     let route = checkRoute()
@@ -235,15 +279,28 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
       playAudio(data, pan: line.pan, fallbackText: line.text)
       return
     }
+    // Download hung or callback lost: the fetch has an 8 s timeout, so 30 s is comfortably past it.
+    armWatchdog(seconds: 30)
     downloadTask = Task {
       let t0 = CFAbsoluteTimeGetCurrent()
       do {
         let data = try await Self.fetch(speechId, timeout: 8)
         NSLog("[Glasses] speech \(speechId) downloaded in \(Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)) ms")
-        await MainActor.run { self.playAudio(data, pan: line.pan, fallbackText: line.text) }
+        await MainActor.run {
+          // The line this download was started for is no longer current (dropped by an interruption,
+          // a route loss or the watchdog): the data is cached for next time, do not play it now.
+          guard self.lineSeq == seq, self.current != nil, !Task.isCancelled else {
+            NSLog("[Glasses] speech \(speechId) landed after its line was dropped; ignoring")
+            return
+          }
+          self.playAudio(data, pan: line.pan, fallbackText: line.text)
+        }
       } catch {
-        NSLog("[Glasses] TTS download failed, using Apple speech: \(error.localizedDescription)")
-        await MainActor.run { self.speakWithSynth(line.text) }
+        await MainActor.run {
+          guard self.lineSeq == seq, self.current != nil, !Task.isCancelled else { return }
+          NSLog("[Glasses] TTS download failed, using Apple speech: \(error.localizedDescription)")
+          self.speakWithSynth(line.text)
+        }
       }
     }
   }
@@ -262,6 +319,9 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
       p.pan = pan
       player = p
       if !p.play() { throw GlassesError("AVAudioPlayer.play returned false") }
+      // Duration is known here: give the line twice that (at least 10 s) before declaring it stuck.
+      let dur = p.duration
+      armWatchdog(seconds: dur.isFinite && dur > 0 ? max(10, 2 * dur) : 30)
     } catch {
       NSLog("[Glasses] audio playback failed, using Apple speech: \(error.localizedDescription)")
       player = nil
@@ -274,13 +334,22 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     let u = AVSpeechUtterance(string: text)
     u.voice = AVSpeechSynthesisVoice(language: "en-US")
     u.rate = AVSpeechUtteranceDefaultSpeechRate * 0.92
+    // Synth duration is unknown; a Remi line is a sentence or three, 30 s is far past any of them.
+    armWatchdog(seconds: 30)
+    currentUtterance = u
     synth.speak(u)
   }
 
   private func finishCurrent() {
     guard let line = current else { return }
     current = nil
+    lineSeq &+= 1
+    watchdog?.cancel()
+    watchdog = nil
+    downloadTask?.cancel()
+    downloadTask = nil
     player = nil
+    currentUtterance = nil
     let route = currentRoute
     NSLog("[Glasses] spoke over \(route) (\(Self.panLabel(line.pan))): \(line.text)")
     onSpoken?(line.text, route, line.pan)
@@ -292,12 +361,16 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
   // MARK: Delegates
 
   func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-    DispatchQueue.main.async { self.finishCurrent() }
+    DispatchQueue.main.async {
+      // A player dropped by a route loss or the watchdog must not finish the line that replaced it.
+      guard player === self.player else { return }
+      self.finishCurrent()
+    }
   }
 
   func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
     DispatchQueue.main.async {
-      guard let line = self.current else { return }
+      guard player === self.player, let line = self.current else { return }
       self.player = nil
       if let id = line.speechId { try? FileManager.default.removeItem(at: Self.cacheURL(id)) }
       self.speakWithSynth(line.text)
@@ -305,10 +378,16 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
   }
 
   func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-    DispatchQueue.main.async { self.finishCurrent() }
+    DispatchQueue.main.async {
+      guard utterance === self.currentUtterance else { return }
+      self.finishCurrent()
+    }
   }
 
   func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-    DispatchQueue.main.async { self.finishCurrent() }
+    DispatchQueue.main.async {
+      guard utterance === self.currentUtterance else { return }
+      self.finishCurrent()
+    }
   }
 }

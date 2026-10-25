@@ -7,7 +7,7 @@ import { dayKey, formatAgo, formatDayHeading, formatShortDay, formatTime, format
 import { BellIcon, GlassesIcon, LiveIcon, MemoryIcon, PersonIcon, PillIcon, TrashIcon } from "@/components/icons";
 import { HorizonMark } from "@/components/Logo";
 import { Timeline } from "@/components/Timeline";
-import { ensureDoses } from "@/lib/medications";
+import { ensureDoses, instantAt, localDayKey } from "@/lib/medications";
 import {
   buttonSecondary,
   EmptyState,
@@ -35,8 +35,8 @@ async function Today() {
   const { patientId, patientName, user } = await getCare();
   const self = user.role === "WEARER";
   const now = new Date();
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
+  // Midnight in the app time zone, not server-local (UTC on Vercel would be 8 PM Eastern).
+  const startOfDay = instantAt(localDayKey(now), "00:00");
   await ensureDoses(patientId, now);
 
   const [todayEvents, latest, lastSpoken, upcoming, peopleCount, recentFaces] = await Promise.all([

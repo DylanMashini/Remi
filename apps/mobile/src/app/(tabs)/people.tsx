@@ -57,7 +57,7 @@ export default function PeopleScreen() {
               title="People"
               lead={
                 count
-                  ? `Recall recognizes ${count === 1 ? 'one person' : `these ${count} people`}, and no one else.`
+                  ? `Remi recognizes ${count === 1 ? 'one person' : `these ${count} people`}, and no one else.`
                   : undefined
               }
               action={<IconButton name="plus" label="Add a person" onPress={() => router.push('/add-person')} tone="dusk" />}

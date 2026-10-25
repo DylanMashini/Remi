@@ -23,6 +23,10 @@ const KEEP = 200;
 const SHOW = 40;
 const ACTIVE_MS = 2 * 60_000;
 const IN_VIEW_MS = 5 * 60_000;
+// While the stream is not live, refetch the log on this cadence so the projector never freezes.
+const FALLBACK_POLL_MS = 10_000;
+// The browser gives up on EventSource for good after a non-200 connect; we retry after this long.
+const RECONNECT_MS = 5_000;
 
 async function getJson<T>(url: string): Promise<T | null> {
   try {
@@ -92,7 +96,12 @@ export function LiveView({ patientName }: { patientName: string }) {
   const [full, setFull] = useState(false);
   const [firstIds, setFirstIds] = useState<Set<string> | null>(null);
   const knownIds = useRef<Set<string>>(new Set());
+  const connRef = useRef<Conn>("connecting");
   const now = useNow(15_000);
+
+  useEffect(() => {
+    connRef.current = conn;
+  }, [conn]);
 
   const refreshPeople = useCallback(async () => {
     const data = await getJson<{ people?: PersonInfo[] }>("/api/people");
@@ -133,10 +142,10 @@ export function LiveView({ patientName }: { patientName: string }) {
     // Loads start on the next tick: each one awaits the network before touching state.
     void Promise.resolve().then(() => Promise.all([loadEvents(), refreshPeople(), refreshNextUp()]));
 
-    const es = new EventSource("/api/stream");
-    es.onopen = () => setConn("live");
-    es.onerror = () => setConn((c) => (c === "signed-out" ? c : "reconnecting"));
-    es.addEventListener("event", (msg) => {
+    let es: EventSource | null = null;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
+    const onEvent = (msg: Event) => {
       try {
         const ev = JSON.parse((msg as MessageEvent<string>).data) as EventJson;
         setEvents((prev) => mergeEvents(prev, [ev]));
@@ -146,7 +155,33 @@ export function LiveView({ patientName }: { patientName: string }) {
       } catch {
         // Ignore malformed frames.
       }
-    });
+    };
+    const connect = () => {
+      if (stopped) return;
+      const source = new EventSource("/api/stream");
+      es = source;
+      source.onopen = () => {
+        setConn("live");
+        // Every (re)connect backfills: the server replays from Last-Event-ID, but a fresh
+        // EventSource (ours, below) has no id to send, and the log is the source of truth anyway.
+        void loadEvents();
+        void refreshNextUp();
+      };
+      source.onerror = () => {
+        setConn((c) => (c === "signed-out" ? c : "reconnecting"));
+        // readyState CONNECTING means the browser is retrying on its own (retry: 2000). CLOSED
+        // means it gave up for good (401 on an expired cookie, 5xx on a cold start): recreate it.
+        if (source.readyState !== EventSource.CLOSED) return;
+        source.close();
+        if (es === source) es = null;
+        clearTimeout(retry);
+        retry = setTimeout(() => {
+          if (!stopped && connRef.current !== "signed-out") connect();
+        }, RECONNECT_MS);
+      };
+      source.addEventListener("event", onEvent);
+    };
+    connect();
     // Coming back to the tab: catch up on anything missed while the socket was asleep.
     const onVisible = () => {
       if (document.visibilityState === "visible") {
@@ -162,12 +197,22 @@ export function LiveView({ patientName }: { patientName: string }) {
     };
     window.addEventListener("keydown", onKey);
     return () => {
-      es.close();
+      stopped = true;
+      clearTimeout(retry);
+      es?.close();
       document.removeEventListener("visibilitychange", onVisible);
       document.removeEventListener("fullscreenchange", onFull);
       window.removeEventListener("keydown", onKey);
     };
   }, [loadEvents, refreshNextUp, refreshPeople]);
+
+  // Polling fallback: while the stream is not live, keep the log fresh from /api/events.
+  useEffect(() => {
+    // Signed out: nothing recreates the stream, so polling would only collect 401s.
+    if (conn === "live" || conn === "signed-out") return;
+    const id = setInterval(() => void loadEvents(), FALLBACK_POLL_MS);
+    return () => clearInterval(id);
+  }, [conn, loadEvents]);
 
   const moments = useMemo(() => toMoments(events).slice(0, SHOW), [events]);
   const lastSpoken = events.find((e) => e.type === "SPOKEN");

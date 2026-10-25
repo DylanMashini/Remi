@@ -24,6 +24,32 @@ export async function GET(req: Request) {
   let cursor = new Date();
   let seenAtCursor = new Set<string>();
 
+  // Resume: on reconnect the browser sends the last `id:` it received. Start the cursor at that
+  // row so anything created while the connection was down (Vercel maxDuration, network blip) is
+  // replayed instead of lost. Unknown or foreign ids fall back to "now".
+  const lastEventId = req.headers.get("last-event-id")?.trim();
+  if (lastEventId) {
+    try {
+      const last = await prisma.event.findFirst({
+        where: { id: lastEventId, patientId },
+        select: { createdAt: true },
+      });
+      if (last) {
+        cursor = last.createdAt;
+        const sameMs = await prisma.event.findMany({
+          where: { patientId, createdAt: cursor },
+          select: { id: true },
+        });
+        // The row they already have, and any row at the same ms that sorts at or before it, are
+        // seen. Rows at that ms with an id sorting after it have not been sent yet (we emit in
+        // createdAt asc, id asc order), so leave them out and they replay.
+        seenAtCursor = new Set(sameMs.map((r) => r.id).filter((id) => id <= lastEventId));
+      }
+    } catch (error) {
+      console.error("[stream] resume lookup failed", error);
+    }
+  }
+
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const send = (chunk: string) => {
