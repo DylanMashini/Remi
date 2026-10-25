@@ -122,6 +122,9 @@ final class GlassesController {
     local.onError = { [weak self] msg in
       Task { @MainActor in self?.emitError(msg) }
     }
+    local.onRosterSpeech = { [weak self] speechIds in
+      Task { @MainActor in self?.speaker.prefetch(speechIds) }
+    }
   }
 
   // MARK: Roster

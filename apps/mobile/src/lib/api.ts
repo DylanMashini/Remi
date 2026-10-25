@@ -15,6 +15,8 @@ export type Person = {
   lastSeenAt: string | null;
   /** The exact sentence the glasses say when this person walks up. */
   line: string;
+  /** `/api/speech/<speechId>` is the ElevenLabs audio for `line` (the Swift module prefetches it). */
+  speechId?: string;
   memoryCount: number;
   lastRememberedAt: string | null;
 };

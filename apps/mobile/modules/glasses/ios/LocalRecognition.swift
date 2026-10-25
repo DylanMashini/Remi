@@ -14,7 +14,9 @@ final class LocalRecognition {
   static let unknownDebounce: TimeInterval = 60
   static let unknownLine = "Someone new is here."
 
-  struct Person { let id: String; let name: String; let relationship: String?; let line: String }
+  /// `speechId` is the server's id for the ElevenLabs audio of `line` (nil for a roster copy that
+  /// predates the field); the Speaker caches that audio on the phone during roster sync.
+  struct Person { let id: String; let name: String; let relationship: String?; let line: String; let speechId: String? }
   private struct Sample { let personId: String; let embedding: [Float] }
 
   private let queue = DispatchQueue(label: "recall.frames.local", qos: .userInitiated)
@@ -27,6 +29,7 @@ final class LocalRecognition {
   private var people: [String: Person] = [:]
   private var samples: [Sample] = []
   private var embeddingByFile: [String: [Float]] = [:]  // fileId -> embedding, so re-syncs skip unchanged photos
+  private var unknownSpeechId: String?  // server's speechId for `unknownLine`
   private(set) var lastSyncAt: Date?
   private(set) var lastSyncError: String?
 
@@ -44,6 +47,8 @@ final class LocalRecognition {
   var onError: ((String) -> Void)?
   /// Called with (speechId?, text) when a line should be spoken.
   var onSpeak: ((String?, String) -> Void)?
+  /// Called after a roster sync with every speechId the glasses may need, so audio can be prefetched.
+  var onRosterSpeech: (([String]) -> Void)?
 
   private init() {}
 
@@ -80,7 +85,8 @@ final class LocalRecognition {
     for p in list {
       guard let id = p["id"] as? String, let name = p["name"] as? String else { continue }
       let line = (p["line"] as? String) ?? "This is \(name)."
-      newPeople[id] = Person(id: id, name: name, relationship: p["relationship"] as? String, line: line)
+      let speechId = (p["speechId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+      newPeople[id] = Person(id: id, name: name, relationship: p["relationship"] as? String, line: line, speechId: speechId)
       var urls = p["photoUrls"] as? [String] ?? []
       if urls.isEmpty, let one = p["photoUrl"] as? String { urls = [one] }
       for url in urls {
@@ -106,13 +112,18 @@ final class LocalRecognition {
       }
     }
     let known = Set(newSamples.map { $0.personId })
+    let unknownId = ((obj["unknown"] as? [String: Any])?["speechId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
     withLock {
       people = newPeople
       samples = newSamples
       embeddingByFile = cache
+      unknownSpeechId = unknownId
       lastSyncAt = Date()
       lastSyncError = failures > 0 ? "\(failures) photo(s) could not be embedded" : nil
     }
+    // Pull every line's ElevenLabs audio onto the phone now, so the first recognition plays instantly.
+    let speechIds = newPeople.values.compactMap { $0.speechId } + (unknownId.map { [$0] } ?? [])
+    onRosterSpeech?(speechIds)
     NSLog("[Glasses] roster synced in \(Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)) ms: \(newPeople.count) people, \(newSamples.count) samples, \(newPeople.count - known.count) without a usable photo")
     return (newPeople.count, newSamples.count)
   }
@@ -203,22 +214,27 @@ final class LocalRecognition {
     // Decide what to say: known people first (5 min each), unknown only if nobody known is in frame.
     var events: [[String: Any]] = []
     var lines: [String] = []
+    var lineIds: [String?] = []
     var announced = Set<String>()
     for m in matches {
       guard let p = m.person, !announced.contains(p.id), shouldAnnouncePerson(p.id) else { continue }
       announced.insert(p.id)
       lines.append(p.line)
+      lineIds.append(p.speechId)
       events.append(["personId": p.id, "score": m.score, "box": m.box])
     }
     let unknown = matches.filter { $0.person == nil }
     if lines.isEmpty, let first = unknown.first, matches.allSatisfy({ $0.person == nil }), shouldAnnounceUnknown() {
       lines.append(Self.unknownLine)
+      lineIds.append(withLock { unknownSpeechId })
       events.append(["personId": NSNull(), "score": first.score, "box": first.box, "count": unknown.count])
     }
 
     var body: [String: Any] = ["faces": faces]
     let localText = lines.joined(separator: " ")
-    if !lines.isEmpty { body["speak"] = ["speechId": "", "text": localText] }
+    // The roster's speechId is only valid for a single line (ids hash the exact text).
+    let localSpeechId: String? = lines.count == 1 ? lineIds[0] : nil
+    if !lines.isEmpty { body["speak"] = ["speechId": localSpeechId ?? "", "text": localText] }
     onResult?(body, w, h)
     // `image` goes out of scope here: the frame is discarded, never written anywhere.
 
@@ -237,7 +253,9 @@ final class LocalRecognition {
       } catch {
         report("Recognition log failed (spoke locally): \(error.localizedDescription)")
       }
-      onSpeak?(nil, localText)
+      // Offline fallback: the roster's speechId is usually already cached on the phone, so this is
+      // still the ElevenLabs voice; Apple speech only if the audio was never fetched.
+      onSpeak?(localSpeechId, localText)
     }
   }
 

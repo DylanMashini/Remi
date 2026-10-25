@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { knownLine } from "@/lib/line";
 import { serializeMemory, type MemoryJson } from "@/lib/memories";
+import { speechIdFor } from "@/lib/tts";
 
 /** Shape of a person in `GET /api/people` and `GET /api/people/[id]` (see CONTRACT.md). */
 export type PersonJson = {
@@ -18,6 +19,8 @@ export type PersonJson = {
   lastSeenAt: string | null;
   /** The exact sentence the glasses say when this person walks up. */
   line: string;
+  /** `/api/speech/<speechId>` is the ElevenLabs audio for `line`; minting it here prewarms the server cache. */
+  speechId: string;
   memoryCount: number;
   lastRememberedAt: string | null;
 };
@@ -51,6 +54,7 @@ type PersonRow = {
 };
 
 function toJson(p: PersonRow, lastSeen: Date | null | undefined, lastRemembered: Date | null | undefined): PersonJson {
+  const line = knownLine({ ...p, memory: p.memories[0]?.calloutText ?? null });
   return {
     id: p.id,
     name: p.name,
@@ -61,7 +65,8 @@ function toJson(p: PersonRow, lastSeen: Date | null | undefined, lastRemembered:
     photoUrls: p.files.map((f) => `/api/files/${f.id}`),
     photoCount: p.files.length,
     lastSeenAt: lastSeen?.toISOString() ?? null,
-    line: knownLine({ ...p, memory: p.memories[0]?.calloutText ?? null }),
+    line,
+    speechId: speechIdFor(line),
     memoryCount: p._count.memories,
     lastRememberedAt: lastRemembered?.toISOString() ?? null,
   };

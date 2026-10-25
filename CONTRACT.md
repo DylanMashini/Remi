@@ -80,8 +80,13 @@ skipped (logged), so a person enrolled from the web with a poor photo may have 0
 ### `GET /api/speech/[id]`
 Returns `audio/mpeg`. `id` = sha256(text) prefix; the text is registered server-side when the
 speechId is minted (`lib/tts.ts` `speechIdFor(text)`). Audio is generated with ElevenLabs once
-and cached on disk (`.cache/speech/<id>.mp3`, gitignored), so the same words always sound the
-same. Swift falls back to `AVSpeechSynthesizer` with the `text` it already has if this fails.
+(`eleven_flash_v2_5`, voice `ELEVENLABS_VOICE_ID`, default premade "Bella"; Voice Library voices
+need a paid plan and return 402) and cached on disk (`.cache/speech/<id>.mp3`, gitignored), so
+the same words always sound the same. The ElevenLabs key never leaves the server; the phone only
+ever calls this route. Swift caches each download in `Library/Caches/speech/<id>.mp3` and
+prefetches every roster `speechId` (plus `unknown.speechId`) when the roster syncs, so a
+recognition normally plays from disk with no network wait. Swift falls back to
+`AVSpeechSynthesizer` with the `text` it already has if the audio cannot be fetched or decoded.
 
 ### `POST /api/ask`
 Body: raw `audio/wav` (16 kHz mono PCM16) or JSON `{text}`. Server: transcribe (ElevenLabs
@@ -111,8 +116,12 @@ the face first and refuses photos without one), otherwise the centre square (web
 Unreadable photos are rejected with `422 {error, index}` before anything is saved. Response
 `201 {person}`. The phone re-syncs its roster right after.
 
-### `GET /api/people` → `{people: [Person]}`
-`Person = {id, name, relationship, notes, avatarUrl, photoUrl, photoUrls, photoCount, lastSeenAt, line, memoryCount, lastRememberedAt}`.
+### `GET /api/people` → `{people: [Person], unknown: {line, speechId}}`
+`Person = {id, name, relationship, notes, avatarUrl, photoUrl, photoUrls, photoCount, lastSeenAt, line, speechId, memoryCount, lastRememberedAt}`.
+`speechId` is the `/api/speech/[id]` id for `line`; minting it here starts ElevenLabs generation on
+the server, and the phone downloads every one during roster sync. `unknown` is the same for the
+stranger line. When the server is unreachable at recognition time the phone speaks its roster
+copy with that cached audio.
 `avatarUrl` is `/api/files/<avatarFileId>` or null; `photoUrl` is the first full enrollment photo
 (for the Remember portrait); `photoUrls` is every enrollment photo, oldest first (the phone embeds
 these for on-device recognition). `line` is the exact sentence the glasses say for this person.

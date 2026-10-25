@@ -1,9 +1,10 @@
 import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
-import { knownLine } from "@/lib/line";
+import { knownLine, UNKNOWN_LINE } from "@/lib/line";
 import { deleteBlobs, saveFile } from "@/lib/storage";
 import { listPeople } from "@/lib/people";
+import { speechIdFor } from "@/lib/tts";
 import type { File as FileRow } from "@/generated/prisma/client";
 import { errorResponse, HttpError } from "../_lib/http";
 
@@ -14,7 +15,13 @@ const AVATAR_SIZE = 160;
 export async function GET(req: Request) {
   try {
     const { patientId } = await requireSession(req);
-    return Response.json({ people: await listPeople(patientId) });
+    // Every person's `speechId` (and the stranger line) is minted here, which starts ElevenLabs
+    // generation on the server; the phone then downloads the audio while it syncs the roster, so
+    // the moment someone walks up the words are already on the device.
+    return Response.json({
+      people: await listPeople(patientId),
+      unknown: { line: UNKNOWN_LINE, speechId: speechIdFor(UNKNOWN_LINE) },
+    });
   } catch (error) {
     return errorResponse(error);
   }
@@ -141,6 +148,7 @@ export async function POST(req: Request) {
             photoCount: photoFiles.length,
             lastSeenAt: null,
             line: knownLine({ ...updated, memory: null }),
+            speechId: speechIdFor(knownLine({ ...updated, memory: null })),
             memoryCount: 0,
             lastRememberedAt: null,
           },

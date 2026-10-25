@@ -12,6 +12,12 @@ import path from "node:path";
 const CACHE_DIR = path.join(process.cwd(), ".cache", "speech");
 const DEFAULT_MODEL = "eleven_flash_v2_5"; // ElevenLabs' low-latency model
 const OUTPUT_FORMAT = "mp3_44100_128";
+/**
+ * "Bella - Professional, Bright, Warm", one of ElevenLabs' premade voices. Premade voices work on
+ * every plan; Voice Library voices (like "Lauren") return 402 `paid_plan_required` on the free
+ * plan, which silently sent the whole demo to Apple speech (Oct 24).
+ */
+const DEFAULT_VOICE = "hpp4J3VqNfWAUOO0d1Us";
 
 export class TtsError extends Error {
   name = "TtsError";
@@ -33,7 +39,16 @@ const inflight = (g.__recallSpeechInflight ??= new Map());
 const ID_RE = /^[0-9a-f]{16}$/;
 
 export function ttsConfigured(): boolean {
-  return Boolean(process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID);
+  return Boolean(process.env.ELEVENLABS_API_KEY);
+}
+
+function voiceId(): string {
+  return process.env.ELEVENLABS_VOICE_ID || DEFAULT_VOICE;
+}
+
+/** Make sure the audio for `text` exists (or is being generated). Fire-and-forget. */
+export function prewarmSpeech(text: string): void {
+  speechIdFor(text);
 }
 
 /** Registers text and returns its speechId. Kicks off audio generation in the background. */
@@ -68,8 +83,8 @@ async function textFor(id: string): Promise<string | null> {
 
 async function generate(text: string): Promise<Buffer> {
   const key = process.env.ELEVENLABS_API_KEY;
-  const voice = process.env.ELEVENLABS_VOICE_ID;
-  if (!key || !voice) throw new TtsError(503, "ElevenLabs is not configured (ELEVENLABS_API_KEY / ELEVENLABS_VOICE_ID). Phone should fall back to on-device speech.");
+  const voice = voiceId();
+  if (!key) throw new TtsError(503, "ElevenLabs is not configured (ELEVENLABS_API_KEY). Phone should fall back to on-device speech.");
   const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}?output_format=${OUTPUT_FORMAT}`;
   let res: Response;
   try {
@@ -85,7 +100,8 @@ async function generate(text: string): Promise<Buffer> {
   }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new TtsError(502, `ElevenLabs TTS returned ${res.status}: ${body.slice(0, 300)}`);
+    const hint = res.status === 402 ? " (402 usually means a Voice Library voice on the free plan; use a premade voice id or unset ELEVENLABS_VOICE_ID)" : "";
+    throw new TtsError(502, `ElevenLabs TTS returned ${res.status}${hint}: ${body.slice(0, 300)}`);
   }
   return Buffer.from(await res.arrayBuffer());
 }

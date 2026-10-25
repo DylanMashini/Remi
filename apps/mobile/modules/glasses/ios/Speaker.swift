@@ -2,8 +2,10 @@ import AVFoundation
 import Foundation
 
 /// Plays spoken lines one at a time over the current audio route (Bluetooth A2DP on the glasses).
-/// Downloads ElevenLabs audio from /api/speech/<id>; falls back to AVSpeechSynthesizer with the text.
-/// All state lives on the main queue.
+/// ElevenLabs audio comes from /api/speech/<id> and is cached on disk; roster lines are prefetched
+/// when the roster syncs, so a recognition normally plays from the cache with no network round trip.
+/// Falls back to AVSpeechSynthesizer with the text if the audio cannot be fetched or decoded.
+/// All queue state lives on the main queue.
 final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegate {
   struct Line {
     let speechId: String?
@@ -80,6 +82,94 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     DispatchQueue.main.async { _ = self.checkRoute() }
   }
 
+  // MARK: Audio cache (Library/Caches/speech/<speechId>.mp3)
+
+  // These run from background tasks too, so they stay off the main actor.
+  nonisolated private static let cacheDir: URL = {
+    let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+    let dir = base.appendingPathComponent("speech", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+  }()
+
+  nonisolated private static func cacheURL(_ speechId: String) -> URL {
+    cacheDir.appendingPathComponent("\(speechId).mp3")
+  }
+
+  nonisolated private static func cached(_ speechId: String) -> Data? {
+    let data = try? Data(contentsOf: cacheURL(speechId))
+    return (data?.isEmpty == false) ? data : nil
+  }
+
+  nonisolated private static func store(_ data: Data, for speechId: String) {
+    let url = cacheURL(speechId)
+    let tmp = url.appendingPathExtension("tmp")
+    do {
+      try data.write(to: tmp, options: .atomic)
+      _ = try? FileManager.default.removeItem(at: url)
+      try FileManager.default.moveItem(at: tmp, to: url)
+    } catch {
+      NSLog("[Glasses] speech cache write failed for \(speechId): \(error.localizedDescription)")
+    }
+  }
+
+  /// Downloads /api/speech/<id> (the server generates and caches it once) and stores it locally.
+  nonisolated private static func fetch(_ speechId: String, timeout: TimeInterval) async throws -> Data {
+    let req = try BackendClient.shared.request("/api/speech/\(speechId)", timeout: timeout)
+    let (data, status) = try await BackendClient.shared.send(req)
+    guard status == 200, !data.isEmpty else { throw GlassesError("speech \(speechId) HTTP \(status)") }
+    store(data, for: speechId)
+    return data
+  }
+
+  /// Ids with a download in flight (main actor, like the rest of the queue state).
+  private var prefetching = Set<String>()
+
+  /// Warms the on-device cache for the given speech ids (roster lines). Safe to call often; ids
+  /// already cached or in flight are skipped. Runs a few downloads at a time in the background.
+  func prefetch(_ speechIds: [String]) {
+    var wanted: [String] = []
+    for id in Set(speechIds) where !id.isEmpty && !prefetching.contains(id) && Self.cached(id) == nil {
+      prefetching.insert(id)
+      wanted.append(id)
+    }
+    guard !wanted.isEmpty else { return }
+    Task.detached(priority: .utility) { [weak self] in
+      let t0 = CFAbsoluteTimeGetCurrent()
+      var ok = 0
+      // Three downloads at a time: on a cache miss each one is the server waiting on ElevenLabs.
+      for start in stride(from: 0, to: wanted.count, by: 3) {
+        let chunk = Array(wanted[start..<min(start + 3, wanted.count)])
+        ok += await withTaskGroup(of: Bool.self, returning: Int.self) { group in
+          for id in chunk {
+            group.addTask {
+              do {
+                _ = try await Self.fetch(id, timeout: 20)
+                return true
+              } catch {
+                NSLog("[Glasses] speech prefetch \(id) failed: \(error.localizedDescription)")
+                return false
+              }
+            }
+          }
+          var n = 0
+          for await done in group where done { n += 1 }
+          return n
+        }
+      }
+      let ms = Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)
+      NSLog("[Glasses] speech prefetch: \(ok)/\(wanted.count) lines cached in \(ms) ms")
+      guard let self else { return }
+      await MainActor.run { self.prefetching.subtract(wanted) }
+    }
+  }
+
+  /// Forget cached audio (sign-out).
+  func clearCache() {
+    try? FileManager.default.removeItem(at: Self.cacheDir)
+    try? FileManager.default.createDirectory(at: Self.cacheDir, withIntermediateDirectories: true)
+  }
+
   // MARK: Queue
 
   func enqueue(speechId: String?, text: String, completion: ((String) -> Void)? = nil) {
@@ -98,14 +188,20 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     if route != "a2dp" { NSLog("[Glasses] WARNING speaking over \(route), not glasses A2DP") }
 
     guard let speechId = line.speechId, !speechId.isEmpty else {
+      NSLog("[Glasses] no speechId, using Apple speech")
       speakWithSynth(line.text)
       return
     }
+    if let data = Self.cached(speechId) {
+      NSLog("[Glasses] speech \(speechId) from cache")
+      playAudio(data, fallbackText: line.text)
+      return
+    }
     downloadTask = Task {
+      let t0 = CFAbsoluteTimeGetCurrent()
       do {
-        let req = try BackendClient.shared.request("/api/speech/\(speechId)", timeout: 8)
-        let (data, status) = try await BackendClient.shared.send(req)
-        guard status == 200, !data.isEmpty else { throw GlassesError("speech \(speechId) HTTP \(status)") }
+        let data = try await Self.fetch(speechId, timeout: 8)
+        NSLog("[Glasses] speech \(speechId) downloaded in \(Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)) ms")
         await MainActor.run { self.playAudio(data, fallbackText: line.text) }
       } catch {
         NSLog("[Glasses] TTS download failed, using Apple speech: \(error.localizedDescription)")
@@ -155,6 +251,7 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     DispatchQueue.main.async {
       guard let line = self.current else { return }
       self.player = nil
+      if let id = line.speechId { try? FileManager.default.removeItem(at: Self.cacheURL(id)) }
       self.speakWithSynth(line.text)
     }
   }
