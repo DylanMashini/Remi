@@ -1,15 +1,10 @@
-import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import path from "node:path";
-
 /**
- * Text-to-speech with ElevenLabs, cached on disk so the same words always sound the same.
- * speechId = first 16 hex chars of sha256(text). The text is registered when the id is minted
- * (memory + .cache/speech/<id>.txt) and audio generation starts in the background right away.
+ * Text-to-speech with ElevenLabs. Stateless: the speechId *is* the text (base64url, with the
+ * model name prefixed when the line needs the expressive model), so any server instance can turn
+ * an id back into audio with no shared cache. The phone caches each MP3 on disk
+ * (Library/Caches/speech/<id>.mp3), so a line is generated once per device.
  */
 
-const CACHE_DIR = path.join(process.cwd(), ".cache", "speech");
 const DEFAULT_MODEL = "eleven_flash_v2_5"; // ElevenLabs' low-latency model
 /**
  * Flash ignores audio tags like `[laughs]` or `[whispers]`; only the v3/v4 family performs them.
@@ -23,6 +18,8 @@ const OUTPUT_FORMAT = "mp3_44100_128";
  * plan, which silently sent the whole demo to Apple speech (Oct 24).
  */
 const DEFAULT_VOICE = "hpp4J3VqNfWAUOO0d1Us";
+/** Longest line we will synthesize from an id (a few paragraphs; ElevenLabs allows far more). */
+const MAX_TEXT_CHARS = 5000;
 
 export class TtsError extends Error {
   name = "TtsError";
@@ -34,14 +31,8 @@ export class TtsError extends Error {
   }
 }
 
-const g = globalThis as unknown as {
-  __recallSpeechText?: Map<string, string>;
-  __recallSpeechInflight?: Map<string, Promise<Buffer>>;
-};
-const texts = (g.__recallSpeechText ??= new Map());
-const inflight = (g.__recallSpeechInflight ??= new Map());
-
-const ID_RE = /^[0-9a-f]{16}$/;
+const ID_RE = /^[A-Za-z0-9_-]{1,8192}$/;
+const MODEL_PREFIX_RE = /^(eleven_[a-z0-9_]+)\n/;
 
 export function ttsConfigured(): boolean {
   return Boolean(process.env.ELEVENLABS_API_KEY);
@@ -75,46 +66,34 @@ function modelFor(text: string): string {
   return process.env.ELEVENLABS_MODEL_ID || DEFAULT_MODEL;
 }
 
-/** Make sure the audio for `text` exists (or is being generated). Fire-and-forget. */
-export function prewarmSpeech(text: string): void {
-  speechIdFor(text);
-}
-
-/** Registers text and returns its speechId. Kicks off audio generation in the background. */
+/**
+ * Returns the speechId for `text`: base64url of the text, prefixed with the model name when the
+ * line needs the expressive model so Flash audio is never replayed for a tagged line. Pure; no
+ * server state, so the id works on any instance and the phone can cache by it.
+ */
 export function speechIdFor(text: string): string {
-  // Plain lines keep the historical id (sha256 of the words). A line that needs the expressive
-  // model gets its own id, so audio generated earlier by Flash (tags ignored) is never replayed.
   const model = modelFor(text);
   const keyed = model === DEFAULT_MODEL ? text : `${model}\n${text}`;
-  const id = createHash("sha256").update(keyed).digest("hex").slice(0, 16);
-  if (!texts.has(id)) {
-    texts.set(id, text);
-    try {
-      mkdirSync(CACHE_DIR, { recursive: true });
-      writeFileSync(path.join(CACHE_DIR, `${id}.txt`), text, "utf8");
-    } catch (error) {
-      console.error("[tts] could not persist speech text", error);
-    }
-  }
-  if (ttsConfigured()) {
-    getSpeechAudio(id).catch((error) => console.error(`[tts] prewarm ${id} failed:`, error instanceof Error ? error.message : error));
-  }
-  return id;
+  return Buffer.from(keyed, "utf8").toString("base64url");
 }
 
-async function textFor(id: string): Promise<string | null> {
-  const cached = texts.get(id);
-  if (cached) return cached;
+/** Inverse of speechIdFor: the text to synthesize and the model to use. */
+function decodeSpeechId(id: string): { text: string; model: string } {
+  if (!ID_RE.test(id)) throw new TtsError(400, "Invalid speech id");
+  let keyed: string;
   try {
-    const text = await readFile(path.join(CACHE_DIR, `${id}.txt`), "utf8");
-    texts.set(id, text);
-    return text;
+    keyed = Buffer.from(id, "base64url").toString("utf8");
   } catch {
-    return null;
+    throw new TtsError(400, "Invalid speech id");
   }
+  const m = MODEL_PREFIX_RE.exec(keyed);
+  const text = m ? keyed.slice(m[0].length) : keyed;
+  if (!text.trim()) throw new TtsError(400, "Empty speech id");
+  if (text.length > MAX_TEXT_CHARS) throw new TtsError(413, "Speech text too long");
+  return { text, model: m ? m[1] : modelFor(text) };
 }
 
-async function generate(text: string): Promise<Buffer> {
+async function generate(text: string, model: string): Promise<Buffer> {
   const key = process.env.ELEVENLABS_API_KEY;
   const voice = voiceId();
   if (!key) throw new TtsError(503, "ElevenLabs is not configured (ELEVENLABS_API_KEY). Phone should fall back to on-device speech.");
@@ -124,7 +103,7 @@ async function generate(text: string): Promise<Buffer> {
     res = await fetch(url, {
       method: "POST",
       headers: { "xi-api-key": key, "content-type": "application/json", accept: "audio/mpeg" },
-      body: JSON.stringify({ text, model_id: modelFor(text) }),
+      body: JSON.stringify({ text, model_id: model }),
       signal: AbortSignal.timeout(15000),
       cache: "no-store",
     });
@@ -139,31 +118,8 @@ async function generate(text: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
-/** Returns MP3 bytes for a speechId: disk cache first, else generate once and cache. */
+/** Returns MP3 bytes for a speechId. Generated on every call; the phone is the only cache. */
 export async function getSpeechAudio(id: string): Promise<Buffer> {
-  if (!ID_RE.test(id)) throw new TtsError(400, "Invalid speech id");
-  const mp3Path = path.join(CACHE_DIR, `${id}.mp3`);
-  try {
-    return await readFile(mp3Path);
-  } catch {
-    // not cached yet
-  }
-  const existing = inflight.get(id);
-  if (existing) return existing;
-  const job = (async () => {
-    const text = await textFor(id);
-    if (!text) throw new TtsError(404, "Unknown speech id");
-    const audio = await generate(text);
-    await mkdir(CACHE_DIR, { recursive: true });
-    const tmp = `${mp3Path}.${process.pid}.tmp`;
-    await writeFile(tmp, audio);
-    await rename(tmp, mp3Path);
-    return audio;
-  })();
-  inflight.set(id, job);
-  try {
-    return await job;
-  } finally {
-    inflight.delete(id);
-  }
+  const { text, model } = decodeSpeechId(id);
+  return generate(text, model);
 }

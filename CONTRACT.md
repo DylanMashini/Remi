@@ -106,12 +106,14 @@ stream starts, after `enrollPerson`, and on `syncRoster()`. A photo with no dete
 skipped (logged), so a person enrolled from the web with a poor photo may have 0 usable samples.
 
 ### `GET /api/speech/[id]`
-Returns `audio/mpeg`. `id` = sha256(text) prefix; the text is registered server-side when the
-speechId is minted (`lib/tts.ts` `speechIdFor(text)`). Audio is generated with ElevenLabs once
-(`eleven_flash_v2_5`, voice `ELEVENLABS_VOICE_ID`, default premade "Bella"; Voice Library voices
-need a paid plan and return 402) and cached on disk (`.cache/speech/<id>.mp3`, gitignored), so
-the same words always sound the same. The ElevenLabs key never leaves the server; the phone only
-ever calls this route. Swift caches each download in `Library/Caches/speech/<id>.mp3` and
+Returns `audio/mpeg`. `id` = base64url of the text to speak (prefixed with `<model>\n` when the
+line carries audio tags and needs `eleven_v4_turbo`), minted by `lib/tts.ts` `speechIdFor(text)`.
+The id is self-describing, so the route is stateless: it decodes the text and calls ElevenLabs on
+every request (`eleven_flash_v2_5`, voice `ELEVENLABS_VOICE_ID`, default premade "Bella"; Voice
+Library voices need a paid plan and return 402). There is no server-side cache; the old
+`.cache/speech` disk cache broke on Vercel (read-only filesystem, and the minting request and the
+speech request land on different instances). The ElevenLabs key never leaves the server; the phone
+only ever calls this route. Swift caches each download in `Library/Caches/speech/<id>.mp3` and
 prefetches every roster `speechId` (plus `unknown.speechId`) when the roster syncs, so a
 recognition normally plays from disk with no network wait. Swift falls back to
 `AVSpeechSynthesizer` with the `text` it already has if the audio cannot be fetched or decoded.
