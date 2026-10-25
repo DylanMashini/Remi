@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { AutoRefresh } from "@/components/AutoRefresh";
 import { getCare } from "@/components/care";
 import { PrivacyFooter } from "@/components/Footer";
 import { Wordmark } from "@/components/Logo";
@@ -57,6 +58,10 @@ export default function CareLayout({ children }: LayoutProps<"/">) {
       </main>
       <Suspense fallback={null}>
         <TabBar />
+      </Suspense>
+      {/* Server-rendered pages re-fetch every 10 s so Today and Reminders follow the glasses. /live has its own stream. */}
+      <Suspense fallback={null}>
+        <AutoRefresh />
       </Suspense>
     </div>
   );

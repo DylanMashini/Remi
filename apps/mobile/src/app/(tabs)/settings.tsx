@@ -5,7 +5,6 @@ import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Group, Notice, Row, Screen, ScreenHeader } from '@/components/ui';
 import { Colors, Gutter, Spacing } from '@/constants/theme';
 import { setStatus, useFeed } from '@/lib/feed';
-import { hostOf } from '@/lib/format';
 import { errorMessage, Glasses, glassesAvailable, glassesHas } from '@/lib/glasses';
 import {
   clearPhotoIndex,
@@ -16,7 +15,7 @@ import {
   startPhotoIndex,
   usePhotoIndex,
 } from '@/lib/photoIndex';
-import { BACKEND_URL, useSession } from '@/lib/session';
+import { useSession } from '@/lib/session';
 
 export default function SettingsScreen() {
   const { account, signOut } = useSession();
@@ -62,6 +61,10 @@ export default function SettingsScreen() {
   const caregiver = account?.role !== 'WEARER';
 
   const canSync = glassesHas('syncRoster');
+  // Rehearsal tools stay out of sight: tap the version five times (the same gesture Meta uses for Developer Mode).
+  const [versionTaps, setVersionTaps] = useState(0);
+  const rehearsal = versionTaps >= 5;
+  const canResetCooldown = glassesHas('clearCooldown');
 
   // Photo library index: same row, same buttons, whoever is signed in. It is this phone's library.
   const photoIndex = usePhotoIndex();
@@ -207,10 +210,25 @@ export default function SettingsScreen() {
         </Group>
 
         <Group title="About">
-          <Row title="Version" value={Constants.expoConfig?.version ?? '1.0.0'} valueTone="mute" />
-          <Row title="Server" value={BACKEND_URL ? hostOf(BACKEND_URL) : 'Not configured'} valueTone={BACKEND_URL ? 'mute' : 'attention'} />
+          <Row title="Version" value={Constants.expoConfig?.version ?? '1.0.0'} valueTone="mute" onPress={() => setVersionTaps((n) => n + 1)} />
           <Row title="Glasses module" value={glassesAvailable ? 'Loaded' : 'Missing from this build'} valueTone={glassesAvailable ? 'mute' : 'attention'} />
         </Group>
+
+        {rehearsal ? (
+          <Group
+            title="Rehearsal"
+            footer="Remi announces each person once every five minutes. Reset that so the next sighting is spoken again right away.">
+            <Button
+              title="Reset recognition cooldown"
+              variant="quiet"
+              icon="arrow.counterclockwise"
+              disabled={!canResetCooldown}
+              loading={busy === 'cooldown'}
+              onPress={() => run('cooldown', () => Glasses.clearCooldown(), 'Cooldown reset. The next person Remi sees is announced.')}
+              style={styles.single}
+            />
+          </Group>
+        ) : null}
 
         <Button title="Sign out" variant="quiet" onPress={confirmSignOut} />
       </ScrollView>
@@ -221,6 +239,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   scroll: { paddingHorizontal: Gutter, paddingBottom: Spacing.ten, gap: Spacing.five },
   buttons: { flexDirection: 'row', gap: Spacing.three, padding: Spacing.four, paddingTop: Spacing.two },
+  single: { margin: Spacing.four, marginTop: Spacing.two },
   progressTrack: {
     height: 4,
     borderRadius: 2,

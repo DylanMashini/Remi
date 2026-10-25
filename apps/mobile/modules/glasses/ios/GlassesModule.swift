@@ -104,6 +104,12 @@ public final class GlassesModule: Module {
       return ["text": text]
     }
 
+    // Forgets who was announced recently, so the next sighting of anyone is spoken again at once
+    // (the passive stream otherwise waits 5 min per person). For rehearsals and retakes.
+    AsyncFunction("clearCooldown") { () in
+      LocalRecognition.shared.clearDebounce()
+    }
+
     // Re-embed everyone's enrollment photos on the phone (after enrolling or editing people elsewhere).
     AsyncFunction("syncRoster") { () async throws -> [String: Any] in
       try await GlassesController.shared.syncRoster()

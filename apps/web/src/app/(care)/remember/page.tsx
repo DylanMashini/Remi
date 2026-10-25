@@ -99,7 +99,7 @@ async function Remember() {
         <Group title="Newest memories" footer={memories.length ? "Open a person to change a memory's words or switch it off." : undefined}>
           {memories.length === 0 ? (
             <EmptyState icon={<MemoryIcon size={30} />} title="No memories yet">
-              When {who === "you" ? "you say" : `${patientName} says`} &ldquo;Yes, I know them&rdquo; and {who === "you" ? "talk" : "talks"} about someone, those words land here and the glasses start saying the newest one.
+              When {who === "you" ? "you say" : `${patientName} says`} &ldquo;Yes, I know them&rdquo; and {who === "you" ? "talk" : "talks"} about someone, those words land here and Remi starts saying the newest one.
             </EmptyState>
           ) : (
             memories.map((m) => (

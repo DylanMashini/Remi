@@ -246,7 +246,7 @@ export default function AddPersonScreen() {
             {firstName(saved.name)} is added
           </Text>
           <Text style={styles.doneBody}>
-            The next time {firstName(saved.name)} walks up, the glasses will say:
+            The next time {firstName(saved.name)} walks up, Remi will say:
           </Text>
           <View style={styles.quote}>
             <Text style={styles.quoteText}>{introductionLine(saved)}</Text>

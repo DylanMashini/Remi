@@ -8,7 +8,7 @@ import { Button, Field, Notice, Screen, SheetHeader } from '@/components/ui';
 import { Colors, Gutter, Radii, Spacing, Type } from '@/constants/theme';
 import { api, type PersonDetail } from '@/lib/api';
 import { introductionLine } from '@/lib/format';
-import { errorMessage } from '@/lib/glasses';
+import { errorMessage, resyncRoster } from '@/lib/glasses';
 import { useSession, wearerName } from '@/lib/session';
 
 export default function EditPersonScreen() {
@@ -51,6 +51,7 @@ export default function EditPersonScreen() {
         relationship: relationship.trim() || null,
         notes: notes.trim() || null,
       });
+      resyncRoster();
       router.back();
     } catch (e) {
       setError(errorMessage(e));
@@ -66,7 +67,7 @@ export default function EditPersonScreen() {
           <View style={styles.preview}>
             <View style={styles.previewHead}>
               <HorizonMark size={18} />
-              <Text style={[Type.secondaryBold, { color: Colors.duskDeep }]}>The glasses will say</Text>
+              <Text style={[Type.secondaryBold, { color: Colors.duskDeep }]}>Remi will say</Text>
             </View>
             <Text style={styles.previewText}>{preview}</Text>
           </View>

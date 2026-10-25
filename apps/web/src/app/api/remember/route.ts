@@ -8,8 +8,8 @@ import { errorResponse, HttpError, readJson } from "../_lib/http";
 
 /**
  * One step of a Remember visit. `knew: true` means the wearer said "Yes, I know them";
- * `knew: false` means they asked to be told. Either way the response carries the exact line the
- * glasses say for this person and its speechId, so the phone can play it through the glasses.
+ * `knew: false` means they asked to be told. Either way the response carries the exact line Remi
+ * says for this person and its speechId, so the phone can play it through the glasses.
  * Logged as a PRACTICE event so the caregiver sees the pattern. Never scored, never corrected.
  */
 export async function POST(req: Request) {

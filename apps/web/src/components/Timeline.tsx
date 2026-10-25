@@ -4,6 +4,8 @@ import { formatTime } from "./format";
 import { TrashIcon } from "./icons";
 import { Chip, iconButtonDanger } from "./ui";
 
+const QUOTED = new Set(["SPOKEN", "RECOGNITION", "UNKNOWN", "REMINDER", "ANSWER"]);
+
 export type TimelineEvent = {
   id: string;
   type: string;
@@ -21,7 +23,8 @@ export function Timeline({ events, patientName, deletable = true }: { events: Ti
   return (
     <ol className="hairline-rows m-0 list-none p-0">
       {events.map((e) => {
-        const spoken = e.type === "SPOKEN";
+        // These rows' text is the sentence Remi said (the SPOKEN echo is deduped away), so quote them all.
+        const spoken = QUOTED.has(e.type);
         return (
           <li key={e.id} className="flex items-start gap-3 px-4 py-3.5 sm:gap-4">
             <time dateTime={e.createdAt.toISOString()} className="w-[64px] shrink-0 pt-2 text-[15px] font-bold tabular-nums text-dusk-deep sm:w-[76px]">

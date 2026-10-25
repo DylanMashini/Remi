@@ -120,6 +120,7 @@ type NativeGlasses = {
   speak?: (speechId: string, text: string) => Promise<void>;
   whoIsHere?: () => Promise<{ text: string | null }>;
   syncRoster?: () => Promise<{ people: number; samples: number }>;
+  clearCooldown?: () => Promise<void>;
   photoIndexStatus?: () => Promise<PhotoIndexStatus>;
   photoIndexStart?: () => Promise<PhotoIndexStatus>;
   photoIndexPause?: () => Promise<PhotoIndexStatus>;
@@ -200,6 +201,8 @@ export const Glasses = {
   whoIsHere: () => call('whoIsHere')(),
   /** Re-embed everyone's enrollment photos on the phone (faces are matched on-device). */
   syncRoster: () => call('syncRoster')(),
+  /** Forget who was announced recently so the next sighting is spoken again at once (rehearsals, retakes). */
+  clearCooldown: () => call('clearCooldown')(),
   /**
    * Photo library index (suggestions while adding a person). Built from this phone's own library,
    * stays on this phone, identical for caregiver and wearer accounts. Gate UI on
@@ -256,4 +259,14 @@ export function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   if (typeof e === 'string') return e;
   return 'Something went wrong.';
+}
+
+/**
+ * After a person or their words change on the server, re-embed the roster on the phone so Remi says
+ * the new words (or stops naming a deleted person) without waiting for the next stream start.
+ * Fire-and-forget: a failure is logged, never shown, and the next stream start syncs anyway.
+ */
+export function resyncRoster(): void {
+  if (!glassesHas('syncRoster')) return;
+  Glasses.syncRoster().catch((e) => console.warn('[glasses] roster resync failed:', errorMessage(e)));
 }

@@ -21,6 +21,10 @@ type Conn = "connecting" | "live" | "reconnecting" | "signed-out";
 
 const KEEP = 200;
 const SHOW = 40;
+// Ambient transcript rows (UTTERANCE) feed Ask Remi but are not moments; the projector leaves them out.
+const SHOWN_TYPES = "RECOGNITION,UNKNOWN,QUESTION,ANSWER,REMINDER,SPOKEN,PRACTICE";
+// A past moment whose person was removed from the list: no name, no initials.
+const REMOVED_LABEL = "Removed from the list";
 const ACTIVE_MS = 2 * 60_000;
 const IN_VIEW_MS = 5 * 60_000;
 // While the stream is not live, refetch the log on this cadence so the projector never freezes.
@@ -46,9 +50,16 @@ function mergeEvents(prev: EventJson[], incoming: EventJson[]): EventJson[] {
     .slice(0, KEEP);
 }
 
-function Portrait({ person, name, size, className = "" }: { person?: PersonInfo; name: string; size: number; className?: string }) {
+function Portrait({ person, name, size, className = "", removed = false }: { person?: PersonInfo; name: string; size: number; className?: string; removed?: boolean }) {
   const [broken, setBroken] = useState(false);
   const style = { width: size, height: size, fontSize: Math.round(size * 0.38) };
+  if (removed) {
+    return (
+      <div style={style} className={`flex shrink-0 items-center justify-center rounded-pill border-2 border-dashed border-ink-mute/50 bg-sand font-display font-extrabold text-ink-mute ${className}`}>
+        ?
+      </div>
+    );
+  }
   if (person?.avatarUrl && !broken) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- authed route
@@ -120,7 +131,7 @@ export function LiveView({ patientName }: { patientName: string }) {
 
   const loadEvents = useCallback(async () => {
     try {
-      const res = await fetch(`/api/events?limit=${KEEP}`, { cache: "no-store" });
+      const res = await fetch(`/api/events?limit=${KEEP}&types=${SHOWN_TYPES}`, { cache: "no-store" });
       if (res.status === 401) {
         setConn("signed-out");
         return;
@@ -148,9 +159,11 @@ export function LiveView({ patientName }: { patientName: string }) {
     const onEvent = (msg: Event) => {
       try {
         const ev = JSON.parse((msg as MessageEvent<string>).data) as EventJson;
-        setEvents((prev) => mergeEvents(prev, [ev]));
         setConn("live");
-        if (ev.type === "RECOGNITION" && ev.personId && !knownIds.current.has(ev.personId)) void refreshPeople();
+        if (ev.type === "UTTERANCE") return;
+        setEvents((prev) => mergeEvents(prev, [ev]));
+        // Every recognition refreshes the roster: a newly enrolled judge, or an edited introduction, shows up without a reload.
+        if (ev.type === "RECOGNITION") void refreshPeople();
         if (ev.type === "REMINDER") void refreshNextUp();
       } catch {
         // Ignore malformed frames.
@@ -296,10 +309,10 @@ export function LiveView({ patientName }: { patientName: string }) {
 
             {lastSeen?.type === "RECOGNITION" ? (
               <div key={lastSeen.id} className="flex animate-arrive items-center gap-5 lg:flex-col lg:items-end lg:gap-3 lg:text-right">
-                <Portrait person={lastPerson} name={lastPerson?.name ?? lastSeen.personName ?? "?"} size={132} className={`border-[5px] border-surface shadow-[0_0_0_4px_var(--color-apricot)] lg:h-[200px] lg:w-[200px] ${inView ? "" : "saturate-[.6] opacity-80"}`} />
+                <Portrait person={lastPerson} name={lastPerson?.name ?? lastSeen.personName ?? "?"} removed={!lastPerson && !lastSeen.personName} size={132} className={`border-[5px] border-surface shadow-[0_0_0_4px_var(--color-apricot)] lg:h-[200px] lg:w-[200px] ${inView ? "" : "saturate-[.6] opacity-80"}`} />
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-[15px] font-bold text-ink-soft lg:text-[17px]">{inView ? "In view" : `Last seen ${formatTime(lastSeen.createdAt)}`}</span>
-                  <span className="truncate font-display text-[clamp(28px,3vw,44px)] font-extrabold leading-none">{lastPerson?.name ?? lastSeen.personName ?? "Someone enrolled"}</span>
+                  <span className="truncate font-display text-[clamp(28px,3vw,44px)] font-extrabold leading-none">{lastPerson?.name ?? lastSeen.personName ?? REMOVED_LABEL}</span>
                   {lastPerson?.relationship ? <span className="font-display text-[clamp(18px,1.6vw,24px)] font-bold text-dusk-deep">{capitalize(lastPerson.relationship)}</span> : null}
                 </div>
               </div>
@@ -403,14 +416,15 @@ function MomentRow({ m, person, patientName, fresh }: { m: Moment; person?: Pers
 
   switch (m.kind) {
     case "recognition": {
-      const name = person?.name ?? m.personName ?? "Someone enrolled";
+      const removed = !person && !m.personName;
+      const name = person?.name ?? m.personName ?? REMOVED_LABEL;
       return (
         <li className={row}>
           {time}
-          <Portrait person={person} name={name} size={44} className="border-[2px] border-surface shadow-[0_0_0_2px_var(--color-apricot)]" />
+          <Portrait person={person} name={name} removed={removed} size={44} className="border-[2px] border-surface shadow-[0_0_0_2px_var(--color-apricot)]" />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="text-[15px] font-bold text-ink-soft">{m.trigger ? `${patientName} asked who was here` : `${name} walked up`}</span>
-            {m.spoken ? quote(m.spoken, true) : <span className="text-[17px]">Recognized {name}.</span>}
+            <span className="text-[15px] font-bold text-ink-soft">{m.trigger ? `${patientName} asked who was here` : removed ? "Someone walked up" : `${name} walked up`}</span>
+            {removed ? <span className="text-[17px] text-ink-soft">{m.text}</span> : m.spoken ? quote(m.spoken, true) : <span className="text-[17px]">Recognized {name}.</span>}
           </div>
         </li>
       );

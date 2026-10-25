@@ -24,9 +24,9 @@ function describe(e: EventJson, who: string): { icon: SFSymbol; tone: 'dusk' | '
     case 'QUESTION':
       return { icon: 'bubble.left.fill', tone: 'dusk', title: e.data?.repeat ? `${capitalize(who)} asked again` : `${capitalize(who)} asked` };
     case 'ANSWER':
-      return { icon: 'eyeglasses', tone: 'dusk', title: 'The glasses answered' };
+      return { icon: 'eyeglasses', tone: 'dusk', title: 'Remi answered' };
     case 'REMINDER':
-      return { icon: 'bell.fill', tone: 'dusk', title: 'Reminder spoken' };
+      return { icon: 'bell.fill', tone: 'dusk', title: 'Remi reminded' };
     case 'PRACTICE': {
       const name = e.personName ?? 'someone';
       if (e.data?.kind === 'memory') {
@@ -71,9 +71,12 @@ export default function TodayScreen() {
     }
   }, [token]);
 
+  // Refresh while the tab is on screen (the phone often sits on this tab beside the glasses), not only on focus.
   useFocusEffect(
     useCallback(() => {
       load();
+      const t = setInterval(load, 10_000);
+      return () => clearInterval(t);
     }, [load])
   );
 
@@ -167,7 +170,7 @@ export default function TodayScreen() {
 
         <Group
           title="Coming up"
-          footer={reminders?.length ? 'The glasses say each one at its time. Touch and hold to remove one.' : undefined}>
+          footer={reminders?.length ? 'Remi says each one at its time. Touch and hold to remove one.' : undefined}>
           {reminders && reminders.length > 0 ? (
             reminders.map((r) => (
               <Row
@@ -187,7 +190,7 @@ export default function TodayScreen() {
             <View style={styles.quietEmpty}>
               <Text style={styles.quietEmptyTitle}>Nothing scheduled</Text>
               <Text style={styles.quietEmptyBody}>
-                Add a reminder and the glasses will say it to {who} at the right moment.
+                Add a reminder and Remi will say it to {who} at the right moment.
               </Text>
               <Button title="Add a reminder" variant="secondary" icon="bell" onPress={() => router.push('/add-reminder')} style={{ alignSelf: 'flex-start', marginTop: Spacing.two }} />
             </View>

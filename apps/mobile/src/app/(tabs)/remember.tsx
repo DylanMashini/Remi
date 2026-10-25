@@ -245,8 +245,8 @@ function Intro({
 
           <View style={styles.rules}>
             <Rule icon="hand.raised" text="Nothing is scored, and no one is corrected." />
-            <Rule icon="eyeglasses" text="If a name slips away, the glasses simply say it." />
-            <Rule icon="quote.bubble" text="What you remember is kept in your own words, and the glasses can say it next time." />
+            <Rule icon="eyeglasses" text="If a name slips away, Remi simply says it." />
+            <Rule icon="quote.bubble" text="What you remember is kept in your own words, and Remi can say it next time." />
           </View>
         </>
       )}
@@ -488,7 +488,7 @@ function Review({
         </View>
       </View>
       <Text style={[Type.body, { color: Colors.inkSoft }]}>
-        Keep it, and the glasses can remind you of it the next time {firstName(person.name)} walks up.
+        Keep it, and Remi can remind you of it the next time {firstName(person.name)} walks up.
       </Text>
       <View style={{ gap: Spacing.three }}>
         <Button title="Keep this memory" size="large" icon="checkmark" onPress={onKeep} loading={busy} />
@@ -540,7 +540,7 @@ function Reveal({
 function Done({ tally, total, onAgain, onClose }: { tally: Tally; total: number; onAgain: () => void; onClose: () => void }) {
   const closing =
     tally.memories > 0
-      ? `You added ${tally.memories} ${tally.memories === 1 ? 'memory' : 'memories'}. The glasses will carry ${tally.memories === 1 ? 'it' : 'them'} with you.`
+      ? `You added ${tally.memories} ${tally.memories === 1 ? 'memory' : 'memories'}. Remi will carry ${tally.memories === 1 ? 'it' : 'them'} with you.`
       : 'Thank you for sitting with them a while.';
   return (
     <ScrollView contentContainerStyle={styles.intro} showsVerticalScrollIndicator={false}>

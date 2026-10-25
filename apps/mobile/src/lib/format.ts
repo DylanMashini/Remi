@@ -72,7 +72,7 @@ function sentence(s: string): string {
 }
 
 /**
- * Builds the sentence the glasses say for a known person, the same way the server does:
+ * Builds the sentence Remi says for a known person, the same way the server does:
  * name, relationship, the caregiver's note, then the newest memory switched on.
  */
 export function introductionLine(p: { name: string; relationship?: string | null; notes?: string | null; memory?: string | null }): string {

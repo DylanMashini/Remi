@@ -6,6 +6,9 @@ import { errorResponse, HttpError, readJson } from "../../_lib/http";
 
 type Params = { params: Promise<{ id: string }> };
 
+/** What a removed person's past RECOGNITION and SPOKEN rows say instead of the line with their name. */
+const REMOVED_PERSON_TEXT = "Someone who has since been removed from the list";
+
 /** One person with their memories and Remember visits. */
 export async function GET(req: Request, { params }: Params) {
   try {
@@ -56,7 +59,10 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 }
 
-/** Deletes a person, their photos (blobs + rows) and memories. Events stay with personId nulled. */
+/**
+ * Deletes a person, their photos (blobs + rows) and memories. Their moments stay in the log, but with
+ * the personId nulled and the spoken text replaced, so the name is truly gone.
+ */
 export async function DELETE(req: Request, { params }: Params) {
   try {
     const { patientId } = await requireSession(req);
@@ -67,8 +73,15 @@ export async function DELETE(req: Request, { params }: Params) {
     });
     if (!person) throw new HttpError(404, "Person not found");
     await deleteBlobs(person.files);
-    // Cascades: File rows (personId), Memories; Event.personId is SetNull.
-    await prisma.person.delete({ where: { id: person.id } });
+    await prisma.$transaction([
+      // "Past moments stay without a name": the introduction text carried the name, so replace it.
+      prisma.event.updateMany({
+        where: { patientId, personId: person.id, type: { in: ["RECOGNITION", "SPOKEN"] } },
+        data: { text: REMOVED_PERSON_TEXT },
+      }),
+      // Cascades: File rows (personId), Memories; Event.personId is SetNull.
+      prisma.person.delete({ where: { id: person.id } }),
+    ]);
     return new Response(null, { status: 204 });
   } catch (error) {
     return errorResponse(error);

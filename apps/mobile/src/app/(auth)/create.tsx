@@ -62,7 +62,7 @@ export default function CreateAccount() {
             title={caregiver ? 'Set up for someone' : 'Set up for yourself'}
             lead={
               caregiver
-                ? 'You get a caregiver account. The glasses speak to them; this phone and the web dashboard are yours.'
+                ? 'You get a caregiver account. Remi speaks to them through the glasses; this phone and the web dashboard are yours.'
                 : 'Your account is for you. The glasses will speak to you, and this phone shows what they say.'
             }
           />

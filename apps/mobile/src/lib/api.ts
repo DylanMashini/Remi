@@ -13,7 +13,7 @@ export type Person = {
   /** Number of enrollment photos. */
   photoCount: number;
   lastSeenAt: string | null;
-  /** The exact sentence the glasses say when this person walks up. */
+  /** The exact sentence Remi says when this person walks up. */
   line: string;
   /** `/api/speech/<speechId>` is the ElevenLabs audio for `line` (the Swift module prefetches it). */
   speechId?: string;
@@ -78,7 +78,7 @@ export const api = {
   deleteMemory: (token: string, memoryId: string) =>
     apiJson<void>(`/api/memories/${id(memoryId)}`, { method: 'DELETE', token }),
 
-  /** One step of a Remember visit. Returns the line the glasses say and its speechId. */
+  /** One step of a Remember visit. Returns the line Remi says and its speechId. */
   remember: (token: string, personId: string, knew: boolean) =>
     apiJson<{ line: string; speechId: string }>('/api/remember', { method: 'POST', token, json: { personId, knew } }),
 

@@ -10,7 +10,7 @@ import { HorizonMark } from '@/components/brand';
 import { Button, Field, Group, Notice, Row, Screen, SheetHeader } from '@/components/ui';
 import { Colors, Gutter, Radii, Spacing, Type } from '@/constants/theme';
 import { api, type Memory } from '@/lib/api';
-import { errorMessage } from '@/lib/glasses';
+import { errorMessage, resyncRoster } from '@/lib/glasses';
 import { useSession } from '@/lib/session';
 
 export default function EditMemoryScreen() {
@@ -61,6 +61,7 @@ export default function EditMemoryScreen() {
           useInCallout: on,
         });
       }
+      resyncRoster();
       router.back();
     } catch (e) {
       setError(errorMessage(e));
@@ -78,6 +79,7 @@ export default function EditMemoryScreen() {
         onPress: async () => {
           try {
             await api.deleteMemory(token, memory.id);
+            resyncRoster();
             router.back();
           } catch (e) {
             setError(errorMessage(e));
@@ -116,7 +118,7 @@ export default function EditMemoryScreen() {
             hint="Kept exactly as written."
           />
           <Field
-            label="The sentence the glasses say"
+            label="The sentence Remi says"
             value={callout}
             onChangeText={setCallout}
             placeholder={editing ? '' : 'Leave empty and Remi writes one from your words.'}

@@ -17,7 +17,7 @@ export type PersonJson = {
   /** Number of enrollment photos (the phone embeds each one for on-device recognition). */
   photoCount: number;
   lastSeenAt: string | null;
-  /** The exact sentence the glasses say when this person walks up. */
+  /** The exact sentence Remi says when this person walks up. */
   line: string;
   /** `/api/speech/<speechId>` is the ElevenLabs audio for `line`; minting it here prewarms the server cache. */
   speechId: string;

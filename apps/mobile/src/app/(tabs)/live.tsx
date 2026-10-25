@@ -33,6 +33,10 @@ function statusPill(status: GlassesStatus, portName: string | null): { tone: 'go
   if (status.streaming && status.audioRoute === 'other' && portName && portName !== 'none') {
     return { tone: 'attention', label: `Audio on ${portName}` };
   }
+  if (status.streaming) {
+    const bluetooth = status.audioRoute === 'a2dp' || status.audioRoute === 'hfp';
+    return { tone: 'good', label: bluetooth ? 'Streaming · Bluetooth' : 'Streaming' };
+  }
   if (status.connection === 'connected') return { tone: 'good', label: 'Glasses connected' };
   if (status.connection === 'connecting') return { tone: 'idle', label: 'Connecting' };
   return { tone: 'idle', label: 'Glasses not connected' };
@@ -47,7 +51,7 @@ function routeText(route?: string, pan?: number): { text: string; warn: boolean 
     return { text: side ? `Whispered in the ${side} ear` : 'Spoken through the glasses', warn: false };
   }
   if (r.includes('speaker')) return { text: 'Played on the phone speaker', warn: true };
-  return { text: `Played on ${route}`, warn: true };
+  return { text: 'Played on the phone', warn: true };
 }
 
 /** Everything Remi says is attributed to Remi by name, never to "the glasses". */

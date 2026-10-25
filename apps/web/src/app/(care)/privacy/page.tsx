@@ -53,7 +53,7 @@ async function Privacy() {
             </RowIcon>
           }
           title="Camera frames are never stored"
-          detail="Each frame from the glasses is matched in memory and discarded within the same request. There is no video, no gallery, and no live feed for caregivers to watch. Only moments (who, when, what was said) are kept."
+          detail="Each frame from the glasses is matched on the phone, against the family's roster only, and discarded there. No frame leaves the phone; the server only ever learns who was recognized and when. There is no video, no gallery, and no live feed for caregivers to watch. Only moments (who, when, what was said) are kept."
         />
         <Row
           leading={
@@ -76,7 +76,13 @@ async function Privacy() {
           valueTone="mute"
         />
         <Row title="Memories" detail="Kept in the speaker's own words, plus the one sentence Remi may say." value={String(memories)} valueTone="mute" href="/remember" />
-        <Row title="Moments in the log" detail="Recognitions, questions, answers, reminders and every spoken line, each with a timestamp." value={String(events)} valueTone="mute" href="/insights" />
+        <Row
+          title="Moments in the log"
+          detail="Recognitions, questions, answers, reminders and every spoken line, each with a timestamp. Also short ambient transcripts of nearby conversation, kept so Remi can answer “What were we talking about?”; the audio itself is not kept."
+          value={String(events)}
+          valueTone="mute"
+          href="/insights"
+        />
       </Group>
 
       <Group title="Voice and conversation">

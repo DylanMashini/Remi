@@ -360,6 +360,9 @@ startListening(): Promise<void>              // begins mic capture for a Remembe
 stopListening(): Promise<{ text: string }>   // uploads to /api/transcribe, returns the words (nothing spoken)
 speak(speechId: string, text: string): Promise<void>      // downloads /api/speech/id, plays over A2DP
 syncRoster(): Promise<{ people: number; samples: number }>  // re-embed the roster from the enrollment photos
+  // JS calls this itself (`resyncRoster()` in lib/glasses.ts) after a person, their words, or a memory
+  // change on the phone, so Remi says the new words without a stream restart.
+clearCooldown(): Promise<void>               // forget who was announced recently (5 min / 60 s debounce); rehearsals
 
 // Photo library index (PhotoIndex.swift). Phone-local, role-agnostic, never synced or uploaded.
 // Indexes faces in the newest 2,000 library photos with the same on-device model (the sidecar

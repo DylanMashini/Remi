@@ -846,6 +846,21 @@ final class GlassesController {
     }
     guard !audio.isAsking else { throw GlassesError("A question is being recorded; finish it first") }
 
+    // Ambient audio uploads in 10 s chunks, so the last few seconds of the conversation the wearer
+    // is about to ask about would otherwise sit untranscribed until after the chat. Send the partial
+    // chunk now and wait (briefly) for the server to log it before the chat's context is built.
+    if let tail = audio.flushAmbient() {
+      let started = Date()
+      do {
+        let req = try BackendClient.shared.request("/api/utterances", method: "POST", contentType: "audio/wav", body: tail, timeout: 4)
+        let obj = try await BackendClient.shared.sendJSON(req)
+        let text = obj["text"] as? String ?? ""
+        NSLog("[Glasses] chat: flushed \(tail.count / 32000) s of ambient audio in \(Int(Date().timeIntervalSince(started) * 1000)) ms: \(text)")
+      } catch {
+        NSLog("[Glasses] chat: ambient flush failed, starting anyway: \(error.localizedDescription)")
+      }
+    }
+
     let obj = try await chatSession()
     guard let urlStr = obj["url"] as? String, let url = URL(string: urlStr),
           let secret = obj["clientSecret"] as? String, !secret.isEmpty else {

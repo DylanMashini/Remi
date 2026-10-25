@@ -56,7 +56,7 @@ export function eventTitle(type: string, patientName: string, personName?: strin
       if ((data as { trigger?: unknown } | null)?.trigger) return `${patientName} asked Remi who was here`;
       return (data as { source?: unknown } | null)?.source === "chat" ? "Remi said in conversation" : "Remi said";
     case "RECOGNITION":
-      return personName ? `Recognized ${personName}` : "Recognized someone";
+      return personName ? `Recognized ${personName}` : "Recognized someone no longer on the list";
     case "UNKNOWN":
       return "Someone new was here";
     case "QUESTION":
@@ -70,6 +70,31 @@ export function eventTitle(type: string, patientName: string, personName?: strin
     default:
       return kindOf(type).label;
   }
+}
+
+/** The rows whose text is echoed verbatim by the SPOKEN row the API logs right after them. */
+const ECHOED_BY_SPOKEN = new Set(["RECOGNITION", "UNKNOWN", "REMINDER", "ANSWER", "PRACTICE"]);
+const ECHO_WINDOW_MS = 10_000;
+
+type Dedupable = { id: string; type: string; text: string; createdAt: Date | string };
+
+/**
+ * Drops a SPOKEN row when it merely repeats the text of a RECOGNITION / UNKNOWN / REMINDER / ANSWER /
+ * PRACTICE row logged within ten seconds of it. The API writes both so the memory log is complete;
+ * a caregiver reading the day should see each moment once. Order is preserved; input is not mutated.
+ */
+export function dedupeSpoken<T extends Dedupable>(events: T[]): T[] {
+  const time = (e: Dedupable) => (e.createdAt instanceof Date ? e.createdAt : new Date(e.createdAt)).getTime();
+  const sources = events.filter((e) => ECHOED_BY_SPOKEN.has(e.type));
+  return events.filter((e) => {
+    if (e.type !== "SPOKEN") return true;
+    const at = time(e);
+    const near = sources.filter((s) => Math.abs(time(s) - at) <= ECHO_WINDOW_MS);
+    if (near.some((s) => s.text === e.text)) return false;
+    // Several people in one frame: one SPOKEN line is the recognition lines joined with spaces.
+    const joined = [...near].sort((a, b) => time(a) - time(b)).map((s) => s.text).join(" ");
+    return near.length < 2 || joined !== e.text;
+  });
 }
 
 /** SPOKEN rows carry the horizon mark: it is Remi's own avatar. Everything else keeps its icon. */

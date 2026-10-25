@@ -64,7 +64,7 @@ export default function AddReminderScreen() {
       <SheetHeader title="Add a reminder" onClose={() => router.back()} />
       <View style={styles.form}>
         <Field
-          label={`What the glasses will say to ${who}`}
+          label={`What Remi will say to ${who}`}
           value={text}
           onChangeText={setText}
           placeholder="Lunch is at 12:30. Sarah is coming at 4."

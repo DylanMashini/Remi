@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { deleteReminder } from "./actions";
 import { Avatar } from "@/components/Avatar";
 import { getCare } from "@/components/care";
+import { dedupeSpoken } from "@/components/events";
 import { dayKey, formatAgo, formatDayHeading, formatShortDay, formatTime, formatWhen, greeting } from "@/components/format";
 import { BellIcon, GlassesIcon, LiveIcon, MemoryIcon, PersonIcon, PillIcon, TrashIcon } from "@/components/icons";
 import { HorizonMark } from "@/components/Logo";
@@ -39,9 +40,10 @@ async function Today() {
   const startOfDay = instantAt(localDayKey(now), "00:00");
   await ensureDoses(patientId, now);
 
-  const [todayEvents, latest, lastSpoken, upcoming, peopleCount, recentFaces] = await Promise.all([
+  const [todayRows, latest, lastSpoken, upcoming, peopleCount, recentFaces] = await Promise.all([
+    // Ambient transcript rows (UTTERANCE) feed Ask Remi but are not moments; they stay out of the list.
     prisma.event.findMany({
-      where: { patientId, createdAt: { gte: startOfDay } },
+      where: { patientId, createdAt: { gte: startOfDay }, type: { not: "UTTERANCE" } },
       orderBy: { createdAt: "desc" },
       take: 200,
       include: { person: { select: { name: true } } },
@@ -59,6 +61,8 @@ async function Today() {
     }),
   ]);
 
+  // The API logs each recognition, reminder and answer twice (the moment plus the SPOKEN line); show it once.
+  const todayEvents = dedupeSpoken(todayRows);
   const active = latest ? now.getTime() - latest.createdAt.getTime() < ACTIVE_WINDOW_MS : false;
   const lastUnknown = todayEvents.find((e) => e.type === "UNKNOWN");
   const practicedToday = todayEvents.some((e) => e.type === "PRACTICE");

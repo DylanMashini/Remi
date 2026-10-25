@@ -7,7 +7,7 @@ import { Avatar, Button, Group, IconButton, Notice, Row, Screen, TextButton } fr
 import { Colors, Fonts, Gutter, Radii, Spacing, Type } from '@/constants/theme';
 import { api, type Memory, type PersonDetail } from '@/lib/api';
 import { agoText, firstName, lastSeenText } from '@/lib/format';
-import { errorMessage } from '@/lib/glasses';
+import { errorMessage, resyncRoster } from '@/lib/glasses';
 import { BACKEND_URL, useSession, wearerName } from '@/lib/session';
 
 export default function PersonScreen() {
@@ -72,6 +72,7 @@ export default function PersonScreen() {
             setRemoving(true);
             try {
               await api.deletePerson(token, person.id);
+              resyncRoster();
               router.back();
             } catch (e) {
               setError(errorMessage(e));
@@ -111,7 +112,7 @@ export default function PersonScreen() {
             <View style={styles.quote}>
               <View style={styles.quoteHead}>
                 <HorizonMark size={18} />
-                <Text style={styles.quoteLabel}>What the glasses say</Text>
+                <Text style={styles.quoteLabel}>What Remi says</Text>
                 <View style={{ flex: 1 }} />
                 <TextButton title="Edit" onPress={() => router.push({ pathname: '/edit-person', params: { id: person.id } })} />
               </View>

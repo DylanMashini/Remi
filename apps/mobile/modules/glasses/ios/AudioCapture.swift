@@ -64,6 +64,19 @@ final class AudioCapture {
     startEngine()
   }
 
+  /// Hands back the ambient audio accumulated since the last 10 s boundary as a WAV, and clears it,
+  /// so the words said right before a conversation starts reach the memory log before the
+  /// conversation's context is built. Returns nil when under `minSeconds` or silent.
+  func flushAmbient(minSeconds: Double = 2) -> Data? {
+    lock.lock()
+    guard ambientEnabled, ambientBuffer.count >= Int(AudioCapture.sampleRate * 2 * minSeconds) else { lock.unlock(); return nil }
+    let chunk = ambientBuffer
+    ambientBuffer.removeAll(keepingCapacity: true)
+    lock.unlock()
+    if AudioCapture.rms(chunk) < 60 { return nil }
+    return AudioCapture.wav(pcm16: chunk, sampleRate: Int(AudioCapture.sampleRate))
+  }
+
   var isAsking: Bool { lock.lock(); defer { lock.unlock() }; return askActive }
   var isChatting: Bool { lock.lock(); defer { lock.unlock() }; return chatActive }
 
