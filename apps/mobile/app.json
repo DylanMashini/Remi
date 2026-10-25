@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Memory Aid",
+    "name": "Remi",
     "slug": "memory-aid",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,14 +8,14 @@
     "scheme": "memoryaid",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.dylanmashini.memoryaid",
       "supportsTablet": false,
       "appleTeamId": "C78UA9J77Y"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#352D50",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -54,8 +54,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Recall uses the camera to take photos of family members so the glasses can recognize them, and to simulate the glasses in demo mode.",
-          "microphonePermission": "Listen when you ask a question, so Recall can answer.",
+          "cameraPermission": "Remi uses the camera to take photos of family members so it can recognize them, and to simulate the glasses in demo mode.",
+          "microphonePermission": "Listen when you ask Remi a question, so Remi can answer.",
           "recordAudioAndroid": false
         }
       ]

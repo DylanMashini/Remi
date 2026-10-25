@@ -31,7 +31,7 @@ async function Reminders() {
     <>
       <PageHeader
         title="Reminders"
-        lead={`Each one is spoken through the glasses once, at its time, in one calm sentence. ${who === "you" ? "You hear" : `${patientName} hears`} it; you see it here and on the phone.`}
+        lead={`Remi says each one once, at its time, in one calm sentence. ${who === "you" ? "You hear" : `${patientName} hears`} it; you see it here and on the phone.`}
       />
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -44,11 +44,11 @@ async function Reminders() {
           <Group
             title="Coming up"
             action={<span className="font-normal text-ink-mute">{upcoming.length ? `${upcoming.length} scheduled` : ""}</span>}
-            footer={upcoming.length ? "The phone checks every 15 seconds and the glasses say each one once it is due." : undefined}
+            footer={upcoming.length ? "The phone checks every 15 seconds and Remi says each one once it is due." : undefined}
           >
             {upcoming.length === 0 ? (
               <EmptyState icon={<BellIcon size={30} />} title="Nothing scheduled">
-                Add a reminder and the glasses will say it to {who} at the right moment.
+                Add a reminder and Remi will say it to {who} at the right moment.
               </EmptyState>
             ) : (
               upcoming.map((r, i) => {
@@ -58,7 +58,7 @@ async function Reminders() {
                     key={r.id}
                     leading={
                       <span className="flex w-[72px] shrink-0 flex-col">
-                        <span className={`text-[15px] font-bold ${i === 0 ? "text-harbor-deep" : "text-ink-soft"}`}>{formatTime(r.dueAt)}</span>
+                        <span className={`text-[15px] font-bold ${i === 0 ? "text-dusk-deep" : "text-ink-soft"}`}>{formatTime(r.dueAt)}</span>
                         <span className="text-[13px] text-ink-mute">{dayKey(r.dueAt) === dayKey(now) ? "Today" : formatShortDay(r.dueAt)}</span>
                       </span>
                     }
@@ -79,11 +79,11 @@ async function Reminders() {
           </Group>
 
           {fired.length > 0 ? (
-            <Group title="Already said" footer="Each of these was spoken through the glasses and is also in the moments log.">
+            <Group title="Already said" footer="Remi said each of these; they are also in the moments log.">
               {fired.map((r) => (
                 <Row
                   key={r.id}
-                  leading={<CheckIcon size={18} className="shrink-0 text-harbor" />}
+                  leading={<CheckIcon size={18} className="shrink-0 text-dusk" />}
                   title={<span className="text-ink-soft">{r.text}</span>}
                   value={formatWhenText(r.firedAt!, now)}
                   valueTone="mute"

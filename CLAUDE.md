@@ -1,7 +1,7 @@
-# Memory Aid (HackPSU Fall 2026)
+# Remi (HackPSU Fall 2026)
 
-Ray-Ban Meta glasses as a memory prosthetic for people with dementia. The glasses see and hear;
-the phone relays; the API recognizes faces, remembers, and answers; the glasses whisper back.
+Remi: Ray-Ban Meta glasses as a memory prosthetic for people with dementia. The glasses see and
+hear; the phone relays; the API recognizes faces, remembers, and answers; Remi whispers back.
 Setup and commands are in `README.md`. Full plan, demo script, and feature tiers:
 https://claude.ai/artifact/3fJURHWSzEBituLYhUowPk
 
@@ -105,7 +105,24 @@ means beat 2 becomes a scripted question over the recognition log. Sunday 10:30 
 - Secrets live in `apps/web/.env` (gitignored). Never commit API keys; put placeholders in
   `.env.example`.
 
-## Voice and tone rules for anything the glasses say
+## Brand rules (Remi)
+
+- The product and the voice are both "Remi". Copy says "Remi says", "Remi recognizes", "Remi
+  reminded". "The glasses" is reserved for hardware: connecting, streaming, audio route, the button.
+  Remi takes no gendered pronoun; use "it" or repeat the name.
+- The chat feature is "Ask Remi" everywhere: the button, the event labels, the Devpost.
+- Wordmark: lowercase "remi" in Nunito 800, dusk plum, with the sun as the dot of the i. It is
+  drawn in code (`apps/mobile/src/components/brand.tsx`, `apps/web/src/components/Logo.tsx`),
+  never as an image. The standalone mark is the same sun half-risen over a horizon line.
+- Motif is sunrise, not sunset: caregivers know the word "sundowning". The sky gradient shifts
+  with the hour (dawn, day, evening, night) but evenings stay warm amber and nothing goes dark.
+- The gradient appears in exactly three places: the Today header, the surface where Remi speaks or
+  listens, and nowhere else. Everything else is flat linen and white. Scarcity is the brand.
+- Color meanings: apricot = a person, dusk = Remi acting, sun = the mark only, attention =
+  caregiver should fix something. Red never appears in the wearer's path.
+- Tokens live in `apps/mobile/src/constants/theme.ts` and are mirrored in `apps/web/src/app/globals.css`.
+
+## Voice and tone rules for anything Remi says
 
 - Short, warm, declarative. One fact per sentence. Name, relationship, then one note.
 - Never correct, quiz, or say "you already asked that". Repeated questions get the same answer in

@@ -12,16 +12,16 @@ export default function TabsLayout() {
   return (
     <NativeTabs
       backgroundColor={Colors.surface}
-      tintColor={Colors.harborDeep}
-      iconColor={{ default: Colors.inkSoft, selected: Colors.harborDeep }}
+      tintColor={Colors.duskDeep}
+      iconColor={{ default: Colors.inkSoft, selected: Colors.duskDeep }}
       disableTransparentOnScrollEdge
       labelStyle={{
         default: { color: Colors.inkSoft, fontFamily: Fonts.bodyBold, fontSize: 11 },
-        selected: { color: Colors.harborDeep, fontFamily: Fonts.bodyBold, fontSize: 11 },
+        selected: { color: Colors.duskDeep, fontFamily: Fonts.bodyBold, fontSize: 11 },
       }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: 'sun.max', selected: 'sun.max.fill' }} />
+        <NativeTabs.Trigger.Icon sf={{ default: 'sunrise', selected: 'sunrise.fill' }} />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="live">
         <NativeTabs.Trigger.Label>Live</NativeTabs.Trigger.Label>

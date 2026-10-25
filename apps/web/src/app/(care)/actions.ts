@@ -36,7 +36,7 @@ export async function addReminder(_prev: ReminderFormState, formData: FormData):
   return { ok: true };
 }
 
-/** Renames the person the glasses speak to. Used by Settings. */
+/** Renames the person Remi speaks to. Used by Settings. */
 export async function updatePatientName(_prev: FormState, formData: FormData): Promise<FormState> {
   const { patientId } = await getCare();
   const name = String(formData.get("name") ?? "").replace(/\s+/g, " ").trim();
@@ -73,7 +73,7 @@ export async function deleteReminder(reminderId: string) {
 
 export type FormState = { error?: string; ok?: boolean };
 
-/** Edits what the glasses say for one person: name, relationship, note. */
+/** Edits what Remi says for one person: name, relationship, note. */
 export async function updateCallout(personId: string, _prev: FormState, formData: FormData): Promise<FormState> {
   const { patientId } = await getCare();
   const name = String(formData.get("name") ?? "").replace(/\s+/g, " ").trim();

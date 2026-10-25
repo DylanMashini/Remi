@@ -37,15 +37,15 @@ module.exports = function withMetaWearables(config, { urlScheme, appId = '0', cl
     plist.CFBundleURLTypes = urlTypes;
 
     plist.NSBluetoothAlwaysUsageDescription = 'Connect to your Meta glasses.';
-    plist.NSLocalNetworkUsageDescription = 'Communicate with your Meta glasses and the Recall server.';
+    plist.NSLocalNetworkUsageDescription = 'Communicate with your Meta glasses and the Remi server.';
     plist.NSMicrophoneUsageDescription =
-      plist.NSMicrophoneUsageDescription ?? 'Listen when you ask a question, so Recall can answer.';
+      plist.NSMicrophoneUsageDescription ?? 'Listen when you ask Remi a question, so Remi can answer.';
     plist.NSCameraUsageDescription =
-      plist.NSCameraUsageDescription ?? 'Recall uses the camera to take photos of family members so the glasses can recognize them, and to simulate the glasses in demo mode.';
+      plist.NSCameraUsageDescription ?? 'Remi uses the camera to take photos of family members so it can recognize them, and to simulate the glasses in demo mode.';
     // Read access (PhotoKit, readWrite level: addOnly cannot fetch assets) for the on-device
     // photo index that suggests enrollment photos. Say exactly what it does.
     plist.NSPhotoLibraryUsageDescription =
-      'Recall indexes faces in your photos on this phone, the way Photos does, so you can pick good photos when adding someone. Nothing leaves the phone.';
+      'Remi indexes faces in your photos on this phone, the way Photos does, so you can pick good photos when adding someone. Nothing leaves the phone.';
     // With "limited" access iOS would otherwise pop its "Select More Photos" sheet on the first fetch.
     plist.PHPhotoLibraryPreventAutomaticLimitedAccessAlert = true;
     // Dev backend runs over plain http on the Mac's LAN IP.

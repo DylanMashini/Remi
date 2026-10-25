@@ -12,7 +12,7 @@ export function DeletePersonButton({ id, name }: { id: string; name: string }) {
   const first = name.split(" ")[0];
 
   async function onClick() {
-    if (!window.confirm(`Remove ${first}? Recall will stop recognizing ${first} and delete their photos and memories. Past moments stay in the log without a name.`)) return;
+    if (!window.confirm(`Remove ${first}? Remi will stop recognizing ${first} and delete their photos and memories. Past moments stay in the log without a name.`)) return;
     setBusy(true);
     setError(null);
     try {

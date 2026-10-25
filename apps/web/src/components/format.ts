@@ -43,9 +43,14 @@ export function weekdayShort(d: Date | string): string {
   return new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: TIME_ZONE }).format(new Date(d));
 }
 
+/** Hour (0 to 23) in the demo time zone. */
+export function hourOf(now: Date): number {
+  return Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: TIME_ZONE }).format(now)) % 24;
+}
+
 /** "Good morning" / "Good afternoon" / "Good evening" in the demo time zone. */
 export function greeting(now: Date): string {
-  const h = Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: TIME_ZONE }).format(now));
+  const h = hourOf(now);
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   return "Good evening";
@@ -70,7 +75,7 @@ function sentence(s: string): string {
   return /[.!?]$/.test(t) ? t : `${t}.`;
 }
 
-/** The exact line the glasses say for a known person (matches lib/line.ts and CONTRACT.md). */
+/** The exact line Remi says for a known person (matches lib/line.ts and CONTRACT.md). */
 export function knownLine(p: { name: string; relationship?: string | null; notes?: string | null; memory?: string | null }): string {
   const parts = [p.relationship ? `This is ${p.name}, your ${p.relationship}.` : `This is ${p.name}.`];
   if (p.notes?.trim()) parts.push(sentence(p.notes));

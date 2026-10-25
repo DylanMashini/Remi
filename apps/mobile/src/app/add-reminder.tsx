@@ -90,7 +90,7 @@ export default function AddReminderScreen() {
                     active && styles.presetActive,
                     pressed && { opacity: 0.7 },
                   ]}>
-                  <Text style={[styles.presetText, active && { color: Colors.harborDeep }]}>{p.label}</Text>
+                  <Text style={[styles.presetText, active && { color: Colors.duskDeep }]}>{p.label}</Text>
                 </Pressable>
               );
             })}
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.line,
     justifyContent: 'center',
   },
-  presetActive: { backgroundColor: Colors.harborMist, borderColor: Colors.harbor },
+  presetActive: { backgroundColor: Colors.duskMist, borderColor: Colors.dusk },
   presetText: { ...Type.secondaryBold, color: Colors.ink },
   picker: {
     flexDirection: 'row',

@@ -66,7 +66,7 @@ export function ReminderForm({ action, patientName, nextHref, self = false }: { 
 
   return (
     <form action={submit} className="flex flex-col gap-6">
-      <Field label={self ? "What you will hear" : `What ${patientName} will hear`} htmlFor="rem-text" hint="Short and warm. One sentence. The glasses say it once, at that time.">
+      <Field label={self ? "What you will hear" : `What ${patientName} will hear`} htmlFor="rem-text" hint="Short and warm. One sentence. Remi says it once, at that time.">
         <input
           id="rem-text"
           name="text"
@@ -99,7 +99,7 @@ export function ReminderForm({ action, patientName, nextHref, self = false }: { 
               onClick={() => choose(p.minutes)}
               aria-pressed={picked === p.minutes}
               className={`cursor-pointer rounded-pill border-[1.5px] px-4 py-2 text-[15px] font-bold ${
-                picked === p.minutes ? "border-harbor bg-harbor-mist text-harbor-deep" : "border-line bg-surface text-ink hover:border-harbor"
+                picked === p.minutes ? "border-dusk bg-dusk-mist text-dusk-deep" : "border-line bg-surface text-ink hover:border-dusk"
               }`}
             >
               {p.label}
@@ -122,13 +122,13 @@ export function ReminderForm({ action, patientName, nextHref, self = false }: { 
       </div>
 
       {text.trim() ? (
-        <div className="flex flex-col gap-1.5 rounded-md bg-harbor-mist px-5 py-4">
-          <span className="text-[15px] font-bold text-harbor-deep">{self ? "You will hear" : `${patientName} will hear`}</span>
+        <div className="flex flex-col gap-1.5 rounded-md bg-dusk-mist px-5 py-4">
+          <span className="text-[15px] font-bold text-dusk-deep">{self ? "You will hear" : `${patientName} will hear`}</span>
           <Spoken size="sm">{text.trim()}</Spoken>
         </div>
       ) : null}
 
-      <FormStatus error={state.error} ok={state.ok && !nextHref ? "Reminder added. The glasses will say it on time." : null} />
+      <FormStatus error={state.error} ok={state.ok && !nextHref ? "Reminder added. Remi will say it on time." : null} />
       <div>
         <button type="submit" disabled={pending} className={buttonLarge}>
           {pending ? "Adding" : nextHref ? "Add and continue" : "Add reminder"}

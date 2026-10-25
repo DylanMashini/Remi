@@ -1,4 +1,4 @@
-# Recall API and module contract
+# Remi API and module contract
 
 Single source of truth for the web API (`apps/web`) and the Swift module
 (`apps/mobile/modules/glasses`). Update this file before changing either side.

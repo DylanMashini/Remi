@@ -1,6 +1,7 @@
 /**
- * Recall UI kit. Small, boring, consistent. Every screen is built from these pieces so the
+ * Remi UI kit. Small, boring, consistent. Every screen is built from these pieces so the
  * app reads as one product: one type scale, one radius hierarchy, one way to show status.
+ * The brand marks (wordmark, horizon mark, sky) live in brand.tsx.
  */
 import { Image } from 'expo-image';
 import { SymbolView, type SFSymbol, type SymbolWeight } from 'expo-symbols';
@@ -75,8 +76,8 @@ export function Icon({
 type Variant = 'primary' | 'secondary' | 'quiet' | 'destructive' | 'night';
 
 const variants: Record<Variant, { bg: string; bgPressed: string; fg: string; border?: string }> = {
-  primary: { bg: Colors.harbor, bgPressed: Colors.harborDeep, fg: Colors.surface },
-  secondary: { bg: Colors.surface, bgPressed: Colors.harborMist, fg: Colors.harborDeep, border: Colors.harbor },
+  primary: { bg: Colors.dusk, bgPressed: Colors.duskDeep, fg: Colors.surface },
+  secondary: { bg: Colors.surface, bgPressed: Colors.duskMist, fg: Colors.duskDeep, border: Colors.dusk },
   quiet: { bg: Colors.sand, bgPressed: Colors.line, fg: Colors.ink },
   destructive: { bg: Colors.urgentBg, bgPressed: '#F5CFCA', fg: Colors.urgent },
   night: { bg: Colors.ink, bgPressed: Colors.night, fg: Colors.linen },
@@ -150,7 +151,7 @@ export function Button({
 export function TextButton({
   title,
   onPress,
-  color = Colors.harborDeep,
+  color = Colors.duskDeep,
   style,
 }: {
   title: string;
@@ -181,11 +182,11 @@ export function IconButton({
   label: string;
   onPress: () => void;
   size?: number;
-  tone?: 'sand' | 'surface' | 'harbor' | 'night';
+  tone?: 'sand' | 'surface' | 'dusk' | 'night';
   style?: StyleProp<ViewStyle>;
 }) {
-  const bg = { sand: Colors.sand, surface: Colors.surface, harbor: Colors.harbor, night: 'rgba(18,28,31,0.72)' }[tone];
-  const fg = tone === 'harbor' || tone === 'night' ? Colors.surface : Colors.ink;
+  const bg = { sand: Colors.sand, surface: Colors.surface, dusk: Colors.dusk, night: 'rgba(21,18,31,0.72)' }[tone];
+  const fg = tone === 'dusk' || tone === 'night' ? Colors.surface : Colors.ink;
   return (
     <Pressable
       accessibilityRole="button"
@@ -214,7 +215,7 @@ export const Field = forwardRef<
       <TextInput
         ref={ref}
         placeholderTextColor={Colors.inkMute}
-        selectionColor={Colors.harbor}
+        selectionColor={Colors.dusk}
         {...p}
         accessibilityLabel={p.accessibilityLabel ?? label}
         style={[styles.input, p.multiline && styles.inputMulti, error ? styles.inputError : null, style]}
@@ -266,7 +267,7 @@ type RowProps = {
   value?: string;
   valueTone?: 'default' | 'good' | 'attention' | 'mute';
   icon?: SFSymbol;
-  iconTone?: 'harbor' | 'apricot' | 'sand' | 'attention';
+  iconTone?: 'dusk' | 'apricot' | 'sand' | 'attention';
   leading?: ReactNode;
   trailing?: ReactNode;
   chevron?: boolean;
@@ -291,18 +292,18 @@ export function Row({
 }: RowProps) {
   const valueColor = {
     default: Colors.ink,
-    good: Colors.harborDeep,
+    good: Colors.duskDeep,
     attention: Colors.attention,
     mute: Colors.inkMute,
   }[valueTone];
   const iconBg = {
-    harbor: Colors.harborMist,
+    dusk: Colors.duskMist,
     apricot: Colors.apricotMist,
     sand: Colors.sand,
     attention: Colors.attentionBg,
   }[iconTone];
   const iconFg = {
-    harbor: Colors.harborDeep,
+    dusk: Colors.duskDeep,
     apricot: Colors.apricotDeep,
     sand: Colors.ink,
     attention: Colors.attention,
@@ -357,15 +358,15 @@ export function ChoiceCard({
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${body}`}
       onPress={onPress}
-      style={({ pressed }) => [styles.choice, pressed && { backgroundColor: Colors.harborMist, borderColor: Colors.harbor }]}>
-      <View style={[styles.rowIcon, { backgroundColor: Colors.harborMist, width: 48, height: 48, borderRadius: 24 }]}>
-        <Icon name={icon} size={24} color={Colors.harborDeep} weight="semibold" />
+      style={({ pressed }) => [styles.choice, pressed && { backgroundColor: Colors.duskMist, borderColor: Colors.dusk }]}>
+      <View style={[styles.rowIcon, { backgroundColor: Colors.duskMist, width: 48, height: 48, borderRadius: 24 }]}>
+        <Icon name={icon} size={24} color={Colors.duskDeep} weight="semibold" />
       </View>
       <View style={{ flex: 1, gap: Spacing.one }}>
         <Text style={[Type.title, { fontSize: 20, lineHeight: 26, color: Colors.ink }]}>{title}</Text>
         <Text style={[Type.secondary, { color: Colors.inkSoft }]}>{body}</Text>
       </View>
-      <Icon name="chevron.right" size={16} color={Colors.harborDeep} weight="bold" />
+      <Icon name="chevron.right" size={16} color={Colors.duskDeep} weight="bold" />
     </Pressable>
   );
 }
@@ -388,8 +389,8 @@ export function Notice({
   action?: ReactNode;
 }) {
   const c = {
-    info: { bg: Colors.harborMist, fg: Colors.harborDeep, icon: 'info.circle.fill' as SFSymbol },
-    success: { bg: Colors.harborMist, fg: Colors.harborDeep, icon: 'checkmark.circle.fill' as SFSymbol },
+    info: { bg: Colors.duskMist, fg: Colors.duskDeep, icon: 'info.circle.fill' as SFSymbol },
+    success: { bg: Colors.duskMist, fg: Colors.duskDeep, icon: 'checkmark.circle.fill' as SFSymbol },
     attention: { bg: Colors.attentionBg, fg: Colors.attention, icon: 'exclamationmark.circle.fill' as SFSymbol },
   }[tone];
   return (
@@ -412,7 +413,7 @@ export function Notice({
 }
 
 export function StatusDot({ tone, size = 8 }: { tone: 'good' | 'idle' | 'attention'; size?: number }) {
-  const bg = { good: Colors.harbor, idle: Colors.inkMute, attention: Colors.attention }[tone];
+  const bg = { good: Colors.dusk, idle: Colors.inkMute, attention: Colors.attention }[tone];
   return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: bg }} />;
 }
 
@@ -426,8 +427,8 @@ export function StatusPill({
   label: string;
   onPress?: () => void;
 }) {
-  const fg = { good: Colors.harborDeep, idle: Colors.inkSoft, attention: Colors.attention }[tone];
-  const bg = { good: Colors.harborMist, idle: Colors.sand, attention: Colors.attentionBg }[tone];
+  const fg = { good: Colors.duskDeep, idle: Colors.inkSoft, attention: Colors.attention }[tone];
+  const bg = { good: Colors.duskMist, idle: Colors.sand, attention: Colors.attentionBg }[tone];
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : 'text'}
@@ -574,14 +575,6 @@ export function BottomBar({ children, style }: { children: ReactNode; style?: St
     <SafeAreaView edges={['bottom']} style={[styles.bottomBar, style]}>
       {children}
     </SafeAreaView>
-  );
-}
-
-export function Wordmark({ size = 24, color = Colors.harborDeep }: { size?: number; color?: string }) {
-  return (
-    <Text accessibilityRole="header" style={{ fontFamily: Fonts.display, fontSize: size, color, letterSpacing: -0.5 }}>
-      Recall
-    </Text>
   );
 }
 

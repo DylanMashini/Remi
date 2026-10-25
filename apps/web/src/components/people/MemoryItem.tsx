@@ -23,21 +23,21 @@ export function SaySwitch({ memory, label }: { memory: MemoryJson; label?: strin
         type="button"
         role="switch"
         aria-checked={on}
-        aria-label={label ?? `Say this through the glasses: ${memory.calloutText}`}
+        aria-label={label ?? `Have Remi say this: ${memory.calloutText}`}
         onClick={() =>
           start(async () => {
             setOn(!on);
             await setMemorySpoken(memory.id, !on);
           })
         }
-        className={`relative h-8 w-[52px] shrink-0 cursor-pointer rounded-pill border-0 transition-colors ${on ? "bg-harbor" : "bg-line"}`}
+        className={`relative h-8 w-[52px] shrink-0 cursor-pointer rounded-pill border-0 transition-colors ${on ? "bg-dusk" : "bg-line"}`}
       >
         <span
           aria-hidden="true"
           className={`absolute top-1 h-6 w-6 rounded-pill bg-surface shadow-[0_1px_3px_rgba(30,43,47,0.3)] transition-[left] ${on ? "left-[24px]" : "left-1"}`}
         />
       </button>
-      <span className={on ? "text-harbor-deep" : "text-ink-soft"}>{on ? "Spoken" : "Kept, not spoken"}</span>
+      <span className={on ? "text-dusk-deep" : "text-ink-soft"}>{on ? "Spoken" : "Kept, not spoken"}</span>
     </label>
   );
 }
@@ -51,7 +51,7 @@ export function MemoryItem({ memory, patientName, now, newestSpoken }: { memory:
     <li className="flex flex-col gap-3 px-4 py-4 sm:px-5">
       <div className="flex items-start gap-3.5">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <p className={`m-0 font-display text-[19px] font-bold leading-snug tracking-[-0.2px] ${on ? "text-harbor-deep" : "text-ink-soft"}`}>
+          <p className={`m-0 font-display text-[19px] font-bold leading-snug tracking-[-0.2px] ${on ? "text-dusk-deep" : "text-ink-soft"}`}>
             &ldquo;{memory.calloutText}&rdquo;
             {newestSpoken ? <span className="ml-2 align-middle rounded-pill bg-apricot-mist px-2 py-0.5 font-body text-[12px] text-apricot-deep">Said now</span> : null}
           </p>
@@ -80,7 +80,7 @@ export function MemoryItem({ memory, patientName, now, newestSpoken }: { memory:
       {editing ? (
         <form action={formAction} className="flex flex-col gap-3 border-t border-hairline pt-3">
           <label htmlFor={`callout-${memory.id}`} className="text-[15px] font-bold">
-            The sentence the glasses say
+            The sentence Remi says
           </label>
           <input id={`callout-${memory.id}`} name="calloutText" defaultValue={memory.calloutText} maxLength={160} required autoComplete="off" className={inputClass} />
           <FormStatus error={state.error} ok={state.ok ? "Saved." : null} />

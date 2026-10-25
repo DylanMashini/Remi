@@ -1,29 +1,9 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {
-  Animated,
-  Easing,
-  type LayoutChangeEvent,
-  ScrollView,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { type LayoutChangeEvent, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import {
-  BottomBar,
-  Button,
-  Group,
-  Icon,
-  IconButton,
-  Notice,
-  Row,
-  Screen,
-  StatusPill,
-  TextButton,
-  Wordmark,
-} from '@/components/ui';
+import { HorizonMark, Sky, Wordmark } from '@/components/brand';
+import { BottomBar, Button, Group, Icon, IconButton, Notice, Row, Screen, StatusPill, TextButton } from '@/components/ui';
 import { Colors, Fonts, Gutter, Radii, Shadow, Spacing, Type } from '@/constants/theme';
 import {
   clearChat,
@@ -67,19 +47,20 @@ function routeText(route?: string, pan?: number): { text: string; warn: boolean 
   return { text: `Played on ${route}`, warn: true };
 }
 
+/** Everything Remi says is attributed to Remi by name, never to "the glasses". */
 const sourceLabel: Record<SpokenLine['source'], string> = {
-  recognition: 'Recognized',
-  answer: 'Answered',
-  reminder: 'Reminder',
+  recognition: 'Remi said',
+  answer: 'Remi answered',
+  reminder: 'Remi reminded',
 };
 
 const chatTitle: Record<Chat['state'], string> = {
   idle: '',
-  connecting: 'Connecting',
-  listening: 'Listening',
-  hearing: 'Hearing you',
-  thinking: 'Thinking',
-  speaking: 'Speaking',
+  connecting: 'Remi is waking up',
+  listening: 'Remi is listening',
+  hearing: 'Remi hears you',
+  thinking: 'Remi is thinking',
+  speaking: 'Remi is speaking',
   ended: 'Conversation ended',
 };
 
@@ -87,51 +68,26 @@ function chatHint(chat: Chat, who: string): string {
   const you = who === 'you';
   switch (chat.state) {
     case 'connecting':
-      return 'Getting the glasses ready to talk.';
+      return 'Getting ready to talk.';
     case 'listening': {
       const pause = chat.silenceMs >= 1000 ? `${(chat.silenceMs / 1000).toFixed(1).replace(/\.0$/, '')} seconds` : 'a moment';
-      return `Talk whenever ${you ? 'you' : who} like${you ? '' : 's'}. The glasses wait ${pause} after ${you ? 'you' : who} stop${you ? '' : 's'} before answering, so pausing is fine.`;
+      return `Talk whenever ${you ? 'you' : who} like${you ? '' : 's'}. Remi waits ${pause} after ${you ? 'you' : who} stop${you ? '' : 's'} before answering, so pausing is fine.`;
     }
     case 'hearing':
-      return 'Go on. The glasses are listening.';
+      return 'Go on. Remi is listening.';
     case 'thinking':
       return 'Working out an answer.';
     case 'speaking':
       return 'Answering through the glasses.';
     case 'ended':
       return chat.endedReason === 'idle'
-        ? 'It went quiet for a while, so the glasses said goodbye.'
+        ? 'It went quiet for a while, so Remi said goodbye.'
         : chat.endedReason === 'error'
-          ? 'The connection dropped. Tap Talk to start again.'
+          ? 'The connection dropped. Tap Ask Remi to start again.'
           : `${chat.turns} ${chat.turns === 1 ? 'exchange' : 'exchanges'} saved to the memory log.`;
     default:
       return '';
   }
-}
-
-/** A slow breathing dot for the listening state. Motion only while listening. */
-function Pulse() {
-  const [v] = useState(() => new Animated.Value(0));
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(v, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(v, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [v]);
-  const scale = v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.6] });
-  const opacity = v.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] });
-  return (
-    <View style={styles.pulseWrap}>
-      <Animated.View style={[styles.pulseRing, { transform: [{ scale }], opacity }]} />
-      <View style={styles.pulseCore}>
-        <Icon name="mic.fill" size={18} color={Colors.surface} weight="bold" />
-      </View>
-    </View>
-  );
 }
 
 export default function LiveScreen() {
@@ -259,7 +215,7 @@ export default function LiveScreen() {
           <Notice tone="attention" title="Something needs attention" body={feed.error.message} onDismiss={clearError} />
         ) : null}
         {feed.reminder ? (
-          <Notice tone="info" icon="bell.fill" title="Reminder spoken" body={feed.reminder.text} onDismiss={dismissReminder} />
+          <Notice tone="info" icon="bell.fill" title="Remi reminded" body={feed.reminder.text} onDismiss={dismissReminder} />
         ) : null}
 
         <View style={styles.card}>
@@ -320,13 +276,17 @@ export default function LiveScreen() {
               : null}
           </View>
 
-          <View style={styles.words}>
+          {/* Remi's voice sits on the sky of the hour; the card ends at the horizon line. */}
+          <Sky style={styles.words}>
             {last ? (
               <>
                 <View style={styles.meta}>
-                  <Text style={styles.metaText}>
-                    {sourceLabel[last.source]} at {timeOf(last.at)}
-                  </Text>
+                  <View style={styles.metaRow}>
+                    <HorizonMark size={18} />
+                    <Text style={styles.metaText}>
+                      {sourceLabel[last.source]} at {timeOf(last.at)}
+                    </Text>
+                  </View>
                   {last.source === 'answer' && last.question ? (
                     <Text style={styles.question} numberOfLines={2}>
                       {who === 'you' ? 'You asked' : `${who} asked`}: {last.question}
@@ -341,7 +301,7 @@ export default function LiveScreen() {
                     <Icon
                       name={lastRoute.warn ? 'speaker.wave.2.fill' : 'eyeglasses'}
                       size={14}
-                      color={lastRoute.warn ? Colors.attention : Colors.harborDeep}
+                      color={lastRoute.warn ? Colors.attention : Colors.duskDeep}
                       weight="semibold"
                     />
                     <Text style={[styles.routeText, lastRoute.warn && { color: Colors.attention }]}>{lastRoute.text}</Text>
@@ -350,37 +310,31 @@ export default function LiveScreen() {
               </>
             ) : (
               <>
-                <Text style={styles.metaText}>Nothing said yet</Text>
+                <View style={styles.metaRow}>
+                  <HorizonMark size={18} />
+                  <Text style={styles.metaText}>Remi hasn&apos;t spoken yet</Text>
+                </View>
                 <Text style={styles.spokenEmpty}>
-                  When someone {who === 'you' ? 'you know walks' : `${who} knows walks`} up, their name is spoken here.
+                  When someone {who === 'you' ? 'you know walks' : `${who} knows walks`} up, Remi says their name here.
                 </Text>
               </>
             )}
-          </View>
+          </Sky>
         </View>
 
         {chat.state !== 'idle' ? (
-          <View style={styles.listening} accessibilityLiveRegion="polite">
+          <Sky style={styles.listening} accessibilityLiveRegion="polite">
             <View style={styles.chatHeader}>
-              {chat.state === 'listening' || chat.state === 'hearing' ? (
-                <Pulse />
-              ) : (
-                <View style={styles.pulseWrap}>
-                  <View style={[styles.pulseCore, chat.state === 'ended' && { backgroundColor: Colors.inkSoft }]}>
-                    <Icon
-                      name={chat.state === 'speaking' ? 'speaker.wave.2.fill' : chat.state === 'ended' ? 'checkmark' : 'ellipsis'}
-                      size={18}
-                      color={Colors.surface}
-                      weight="bold"
-                    />
-                  </View>
-                </View>
-              )}
+              <HorizonMark
+                size={56}
+                state={chat.state === 'listening' || chat.state === 'hearing' ? 'listening' : 'idle'}
+                line={chat.state === 'ended' ? Colors.inkMute : Colors.dusk}
+              />
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={styles.listeningTitle}>{chatTitle[chat.state]}</Text>
                 <Text style={styles.listeningBody}>{chatHint(chat, who)}</Text>
               </View>
-              {chat.state === 'ended' ? <IconButton name="xmark" label="Dismiss" onPress={clearChat} size={32} tone="night" /> : null}
+              {chat.state === 'ended' ? <IconButton name="xmark" label="Dismiss" onPress={clearChat} size={32} tone="surface" /> : null}
             </View>
             {chat.user || chat.assistant ? (
               <View style={styles.chatLines}>
@@ -396,17 +350,17 @@ export default function LiveScreen() {
                 ) : null}
               </View>
             ) : null}
-          </View>
+          </Sky>
         ) : ask === 'listening' ? (
-          <View style={styles.listening} accessibilityLiveRegion="polite">
+          <Sky style={styles.listening} accessibilityLiveRegion="polite">
             <View style={styles.chatHeader}>
-              <Pulse />
+              <HorizonMark size={56} state="listening" />
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.listeningTitle}>Listening</Text>
-                <Text style={styles.listeningBody}>Ask out loud. The glasses are listening and looking at what is in front of you. Tap Done when finished.</Text>
+                <Text style={styles.listeningTitle}>Remi is listening</Text>
+                <Text style={styles.listeningBody}>Ask out loud. Remi is listening and looking at what is in front of you. Tap Done when finished.</Text>
               </View>
             </View>
-          </View>
+          </Sky>
         ) : null}
 
         {feed.spoken.length > 1 ? (
@@ -424,25 +378,25 @@ export default function LiveScreen() {
             <IconButton name="stop.fill" label="Stop the glasses" onPress={stopStream} size={64} tone="sand" />
             {askMode === 'chat' ? (
               <Button
-                title={chatRunning ? 'End the conversation' : 'Talk'}
+                title={chatRunning ? 'End the conversation' : 'Ask Remi'}
                 icon={chatRunning ? undefined : 'waveform'}
                 variant={chatRunning ? 'night' : 'primary'}
                 size="large"
                 onPress={toggleChat}
                 loading={chatBusy || streamBusy}
                 style={{ flex: 1 }}
-                accessibilityHint="Starts a conversation. The glasses answer each time the wearer finishes speaking; no need to tap again."
+                accessibilityHint="Starts a conversation. Remi answers each time the wearer finishes speaking; no need to tap again."
               />
             ) : (
               <Button
-                title={ask === 'listening' ? 'Done' : ask === 'thinking' ? 'Thinking' : 'Ask a question'}
+                title={ask === 'listening' ? 'Done' : ask === 'thinking' ? 'Remi is thinking' : 'Ask Remi'}
                 icon={ask === 'idle' ? 'mic.fill' : undefined}
                 variant={ask === 'listening' ? 'night' : 'primary'}
                 size="large"
                 onPress={toggleAsk}
                 loading={ask === 'thinking' || streamBusy}
                 style={{ flex: 1 }}
-                accessibilityHint="Tap, let the wearer ask a question out loud, then tap Done"
+                accessibilityHint="Tap, let the wearer ask Remi a question out loud, then tap Done"
               />
             )}
           </View>
@@ -486,7 +440,7 @@ const styles = StyleSheet.create({
   viewfinder: { backgroundColor: Colors.night, overflow: 'hidden' },
   resting: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(18,28,31,0.88)',
+    backgroundColor: 'rgba(21,18,31,0.88)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: Spacing.eight,
@@ -499,7 +453,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(18,28,31,0.72)',
+    backgroundColor: 'rgba(21,18,31,0.72)',
     borderRadius: Radii.pill,
     paddingHorizontal: 10,
     height: 28,
@@ -518,28 +472,26 @@ const styles = StyleSheet.create({
     maxWidth: 220,
   },
   faceLabelText: { fontFamily: Fonts.display, fontSize: 15, color: Colors.ink },
-  words: { padding: Spacing.five, gap: Spacing.two },
+  words: { padding: Spacing.five, paddingBottom: Spacing.five + 2, gap: Spacing.two },
   meta: { gap: 2 },
-  metaText: { ...Type.secondaryBold, color: Colors.inkSoft },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  metaText: { ...Type.secondaryBold, color: Colors.duskDeep },
   question: { ...Type.secondary, color: Colors.inkSoft },
   spoken: { ...Type.spoken, color: Colors.ink },
   spokenEmpty: { ...Type.body, color: Colors.inkSoft },
   route: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: Spacing.one },
-  routeText: { ...Type.secondaryBold, color: Colors.harborDeep },
+  routeText: { ...Type.secondaryBold, color: Colors.duskDeep },
   listening: {
     gap: Spacing.four,
-    backgroundColor: Colors.ink,
     borderRadius: Radii.md,
     padding: Spacing.five,
+    paddingBottom: Spacing.five + 2,
   },
   chatHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.four },
-  chatLines: { gap: Spacing.two, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.12)', paddingTop: Spacing.three },
-  chatUser: { ...Type.secondary, color: Colors.nightText },
-  chatAssistant: { ...Type.spoken, color: Colors.linen },
-  listeningTitle: { fontFamily: Fonts.display, fontSize: 20, lineHeight: 26, color: Colors.linen },
-  listeningBody: { ...Type.secondary, color: Colors.nightText },
-  pulseWrap: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
-  pulseRing: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.harbor },
-  pulseCore: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.harbor, alignItems: 'center', justifyContent: 'center' },
+  chatLines: { gap: Spacing.two, borderTopWidth: 1, borderTopColor: 'rgba(38,34,47,0.15)', paddingTop: Spacing.three },
+  chatUser: { ...Type.secondary, color: Colors.inkSoft },
+  chatAssistant: { ...Type.spoken, color: Colors.ink },
+  listeningTitle: { fontFamily: Fonts.display, fontSize: 20, lineHeight: 26, color: Colors.ink },
+  listeningBody: { ...Type.secondary, color: Colors.inkSoft },
   actions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
 });

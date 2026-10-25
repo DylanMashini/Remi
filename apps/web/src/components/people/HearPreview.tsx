@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { PlayIcon } from "../icons";
 
-/** Plays the line with the browser voice, as a preview of what the glasses say. */
+/** Plays the line with the browser voice, as a preview of what Remi says. */
 export function HearPreview({ text }: { text: string }) {
   const [playing, setPlaying] = useState(false);
 
@@ -22,7 +22,7 @@ export function HearPreview({ text }: { text: string }) {
     <button
       type="button"
       onClick={play}
-      className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-pill border-0 bg-surface px-3 text-[14px] font-bold text-harbor-deep shadow-[0_0_0_1.5px_var(--color-harbor-mist-deep)] hover:bg-harbor-mist"
+      className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-pill border-0 bg-surface px-3 text-[14px] font-bold text-dusk-deep shadow-[0_0_0_1.5px_var(--color-dusk-mist-deep)] hover:bg-dusk-mist"
       aria-label={`Hear a preview: ${text}`}
       aria-pressed={playing}
     >

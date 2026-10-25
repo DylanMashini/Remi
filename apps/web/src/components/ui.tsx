@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { ChevronRightIcon } from "./icons";
 
 /*
- * Recall web UI kit. Small, boring, consistent, and shaped like the phone app's kit
+ * Remi web UI kit. Small, boring, consistent, and shaped like the phone app's kit
  * (apps/mobile/src/components/ui.tsx): one type scale, one radius hierarchy, one way to
  * show status. Server-safe: no hooks in this file.
  */
@@ -94,10 +94,10 @@ export function CardTitle({ children, action, lead }: { children: ReactNode; act
 
 // ---------- Rows ----------
 
-type RowTone = "harbor" | "apricot" | "sand" | "attention";
+type RowTone = "dusk" | "apricot" | "sand" | "attention";
 
 const rowIconTones: Record<RowTone, string> = {
-  harbor: "bg-harbor-mist text-harbor-deep",
+  dusk: "bg-dusk-mist text-dusk-deep",
   apricot: "bg-apricot-mist text-apricot-deep",
   sand: "bg-sand text-ink",
   attention: "bg-attention-bg text-attention",
@@ -139,7 +139,7 @@ export function Row({
 }) {
   const valueColor = {
     default: "text-ink",
-    good: "text-harbor-deep",
+    good: "text-dusk-deep",
     attention: "text-attention",
     mute: "text-ink-mute",
   }[valueTone];
@@ -169,9 +169,9 @@ export function Row({
 // ---------- Status ----------
 
 export function StatusPill({ tone, children }: { tone: "good" | "idle" | "attention"; children: ReactNode }) {
-  const fg = { good: "text-harbor-deep", idle: "text-ink-soft", attention: "text-attention" }[tone];
-  const bg = { good: "bg-harbor-mist", idle: "bg-sand", attention: "bg-attention-bg" }[tone];
-  const dot = { good: "bg-harbor animate-pulse-dot", idle: "bg-ink-mute", attention: "bg-attention" }[tone];
+  const fg = { good: "text-dusk-deep", idle: "text-ink-soft", attention: "text-attention" }[tone];
+  const bg = { good: "bg-dusk-mist", idle: "bg-sand", attention: "bg-attention-bg" }[tone];
+  const dot = { good: "bg-dusk animate-pulse-dot", idle: "bg-ink-mute", attention: "bg-attention" }[tone];
   return (
     <span className={`inline-flex min-h-9 items-center gap-2 rounded-pill px-3.5 py-1.5 text-[15px] font-bold ${bg} ${fg}`}>
       <span className={`h-2 w-2 rounded-pill ${dot}`} aria-hidden="true" />
@@ -180,9 +180,9 @@ export function StatusPill({ tone, children }: { tone: "good" | "idle" | "attent
   );
 }
 
-export function Chip({ children, tone = "sand" }: { children: ReactNode; tone?: "harbor" | "attention" | "sand" | "apricot" }) {
+export function Chip({ children, tone = "sand" }: { children: ReactNode; tone?: "dusk" | "attention" | "sand" | "apricot" }) {
   const tones = {
-    harbor: "bg-harbor-mist text-harbor-deep",
+    dusk: "bg-dusk-mist text-dusk-deep",
     attention: "bg-attention-bg text-attention",
     apricot: "bg-apricot-mist text-apricot-deep",
     sand: "bg-sand text-ink",
@@ -206,13 +206,13 @@ export function Notice({
   icon?: ReactNode;
 }) {
   const cls = {
-    info: "bg-harbor-mist border-harbor-mist text-ink",
-    success: "bg-harbor-mist border-harbor-mist text-ink",
+    info: "bg-dusk-mist border-dusk-mist text-ink",
+    success: "bg-dusk-mist border-dusk-mist text-ink",
     attention: "bg-attention-bg border-attention-line text-attention",
   }[tone];
   return (
     <div role={tone === "attention" ? "alert" : "status"} className={`flex items-start gap-3 rounded-md border-[1.5px] p-4 ${cls}`}>
-      {icon ? <span className={`mt-0.5 shrink-0 ${tone === "attention" ? "text-attention" : "text-harbor-deep"}`}>{icon}</span> : null}
+      {icon ? <span className={`mt-0.5 shrink-0 ${tone === "attention" ? "text-attention" : "text-dusk-deep"}`}>{icon}</span> : null}
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         {title ? <strong className="text-[17px] leading-snug">{title}</strong> : null}
         <div className="text-[15px] leading-snug">{children}</div>
@@ -227,7 +227,7 @@ export function FormStatus({ error, ok }: { error?: string | null; ok?: string |
   return (
     <div role="status" aria-live="polite" className="empty:hidden">
       {error ? <p className="m-0 rounded-sm bg-attention-bg px-4 py-3 text-[15px] font-bold text-attention">{error}</p> : null}
-      {!error && ok ? <p className="m-0 rounded-sm bg-harbor-mist px-4 py-3 text-[15px] font-bold text-harbor-deep">{ok}</p> : null}
+      {!error && ok ? <p className="m-0 rounded-sm bg-dusk-mist px-4 py-3 text-[15px] font-bold text-dusk-deep">{ok}</p> : null}
     </div>
   );
 }
@@ -245,11 +245,11 @@ export function EmptyState({ icon, title, children, action }: { icon?: ReactNode
 
 // ---------- The spoken word ----------
 
-/** The exact words the glasses say, always shown the same way: Nunito, quoted, harbor. */
+/** The exact words Remi says, always shown the same way: Nunito, quoted, dusk. */
 export function Spoken({ children, size = "md", className = "" }: { children: ReactNode; size?: "sm" | "md" | "lg"; className?: string }) {
   const sz = { sm: "text-[17px] leading-snug", md: "text-[22px] leading-snug sm:text-[24px]", lg: "text-[26px] leading-[1.25] sm:text-[34px]" }[size];
   return (
-    <p className={`m-0 font-display font-bold tracking-[-0.3px] text-harbor-deep ${sz} ${className}`}>
+    <p className={`m-0 font-display font-bold tracking-[-0.3px] text-dusk-deep ${sz} ${className}`}>
       &ldquo;{children}&rdquo;
     </p>
   );
@@ -258,16 +258,16 @@ export function Spoken({ children, size = "md", className = "" }: { children: Re
 // ---------- Buttons and inputs (class strings so forms and links can share them) ----------
 
 const btnBase = "inline-flex items-center justify-center gap-2 rounded-pill border-0 font-bold no-underline transition-colors cursor-pointer disabled:cursor-not-allowed";
-export const buttonPrimary = `${btnBase} h-12 bg-harbor px-5 text-[17px] text-white hover:bg-harbor-deep hover:text-white disabled:opacity-50`;
-export const buttonLarge = `${btnBase} h-14 bg-harbor px-7 font-display text-[19px] text-white hover:bg-harbor-deep hover:text-white disabled:opacity-50`;
-export const buttonSecondary = `${btnBase} h-12 border-[1.5px] border-harbor bg-surface px-5 text-[17px] text-harbor-deep hover:bg-harbor-mist hover:text-harbor-deep disabled:opacity-50`;
+export const buttonPrimary = `${btnBase} h-12 bg-dusk px-5 text-[17px] text-white hover:bg-dusk-deep hover:text-white disabled:opacity-50`;
+export const buttonLarge = `${btnBase} h-14 bg-dusk px-7 font-display text-[19px] text-white hover:bg-dusk-deep hover:text-white disabled:opacity-50`;
+export const buttonSecondary = `${btnBase} h-12 border-[1.5px] border-dusk bg-surface px-5 text-[17px] text-dusk-deep hover:bg-dusk-mist hover:text-dusk-deep disabled:opacity-50`;
 export const buttonQuiet = `${btnBase} h-11 bg-sand px-4 text-[15px] text-ink hover:bg-line hover:text-ink disabled:opacity-50`;
 export const buttonDestructive = `${btnBase} h-11 bg-urgent-bg px-4 text-[15px] text-urgent hover:bg-[#f5cfca] hover:text-urgent disabled:opacity-50`;
-export const buttonText = "inline-flex min-h-11 items-center gap-1.5 text-[15px] font-bold text-harbor-deep hover:text-harbor cursor-pointer border-0 bg-transparent px-1";
+export const buttonText = "inline-flex min-h-11 items-center gap-1.5 text-[15px] font-bold text-dusk-deep hover:text-dusk cursor-pointer border-0 bg-transparent px-1";
 export const iconButton = "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-pill border-0 bg-transparent text-ink-soft hover:bg-sand hover:text-ink cursor-pointer disabled:opacity-50";
 export const iconButtonDanger = "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-pill border-0 bg-transparent text-ink-soft hover:bg-urgent-bg hover:text-urgent cursor-pointer disabled:opacity-50";
 export const inputClass =
-  "min-h-[52px] w-full rounded-sm border-[1.5px] border-line bg-surface px-4 text-[17px] text-ink focus:border-harbor focus:outline-none focus:shadow-[0_0_0_3px_var(--color-harbor-mist)] disabled:opacity-60";
+  "min-h-[52px] w-full rounded-sm border-[1.5px] border-line bg-surface px-4 text-[17px] text-ink focus:border-dusk focus:outline-none focus:shadow-[0_0_0_3px_var(--color-dusk-mist)] disabled:opacity-60";
 export const textareaClass = `${inputClass} py-3 leading-snug resize-y`;
 export const labelClass = "text-[15px] font-bold text-ink";
 
@@ -331,14 +331,14 @@ export function ChoiceCard({ href, icon, title, children }: { href: string; icon
   return (
     <Link
       href={href}
-      className="flex items-center gap-4 rounded-md border-[1.5px] border-surface bg-surface p-5 text-ink no-underline hover:border-harbor hover:bg-harbor-mist hover:text-ink"
+      className="flex items-center gap-4 rounded-md border-[1.5px] border-surface bg-surface p-5 text-ink no-underline hover:border-dusk hover:bg-dusk-mist hover:text-ink"
     >
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-pill bg-harbor-mist text-harbor-deep">{icon}</span>
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-pill bg-dusk-mist text-dusk-deep">{icon}</span>
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="font-display text-[20px] font-bold tracking-[-0.3px]">{title}</span>
         <span className="text-[15px] leading-snug text-ink-soft">{children}</span>
       </span>
-      <ChevronRightIcon size={18} className="shrink-0 text-harbor-deep" />
+      <ChevronRightIcon size={18} className="shrink-0 text-dusk-deep" />
     </Link>
   );
 }

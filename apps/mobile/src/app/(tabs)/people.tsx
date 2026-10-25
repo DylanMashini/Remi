@@ -50,7 +50,7 @@ export default function PeopleScreen() {
         contentContainerStyle={styles.list}
         contentInsetAdjustmentBehavior="automatic"
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.harbor} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.dusk} />}
         ListHeaderComponent={
           <View>
             <ScreenHeader
@@ -60,7 +60,7 @@ export default function PeopleScreen() {
                   ? `Recall recognizes ${count === 1 ? 'one person' : `these ${count} people`}, and no one else.`
                   : undefined
               }
-              action={<IconButton name="plus" label="Add a person" onPress={() => router.push('/add-person')} tone="harbor" />}
+              action={<IconButton name="plus" label="Add a person" onPress={() => router.push('/add-person')} tone="dusk" />}
             />
             {error ? (
               <View style={{ marginBottom: Spacing.four }}>

@@ -28,24 +28,24 @@ async function StartDone() {
   return (
     <>
       <PageHeader
-        title="The glasses are ready for the phone"
-        lead={`Everything you add here reaches the glasses through the Recall app on ${who === "you" ? "your" : `${patientName}'s`} phone. Sign in there with the same email and password.`}
+        title="Remi is ready for the phone"
+        lead={`Everything you add here reaches the glasses through the Remi app on ${who === "you" ? "your" : `${patientName}'s`} phone. Sign in there with the same email and password.`}
       />
 
       <Group title="What is set up">
         <Row
           leading={
-            <RowIcon tone={people ? "harbor" : "sand"}>
+            <RowIcon tone={people ? "dusk" : "sand"}>
               <PeopleIcon size={18} />
             </RowIcon>
           }
-          title={people === 0 ? "No one added yet" : people === 1 ? "1 person the glasses will recognize" : `${people} people the glasses will recognize`}
-          detail={people === 0 ? "Without anyone on the list, the glasses can only say “Someone new is here.”" : "Each one is introduced by name, relationship, and your note."}
+          title={people === 0 ? "No one added yet" : people === 1 ? "1 person Remi will recognize" : `${people} people Remi will recognize`}
+          detail={people === 0 ? "Without anyone on the list, Remi can only say “Someone new is here.”" : "Each one is introduced by name, relationship, and your note."}
           href={people === 0 ? "/start/person" : "/people"}
         />
         <Row
           leading={
-            <RowIcon tone={reminders ? "harbor" : "sand"}>
+            <RowIcon tone={reminders ? "dusk" : "sand"}>
               <BellIcon size={18} />
             </RowIcon>
           }
@@ -55,19 +55,19 @@ async function StartDone() {
         />
       </Group>
 
-      <Group title="On the phone" footer="The phone relays between the glasses and this dashboard. Everything the glasses say also appears here, on Today.">
+      <Group title="On the phone" footer="The phone relays between the glasses and this dashboard. Everything Remi says also appears here, on Today.">
         <Row
           leading={
-            <RowIcon tone="harbor">
+            <RowIcon tone="dusk">
               <PhoneIcon size={18} />
             </RowIcon>
           }
-          title="Open Recall on the phone and sign in"
+          title="Open Remi on the phone and sign in"
           detail={`Use ${user.email}. The phone keeps the sign-in; ${who === "you" ? "you" : patientName} never touch${who === "you" ? "" : "es"} a screen after that.`}
         />
         <Row
           leading={
-            <RowIcon tone="harbor">
+            <RowIcon tone="dusk">
               <GlassesIcon size={18} />
             </RowIcon>
           }
@@ -76,7 +76,7 @@ async function StartDone() {
         />
         <Row
           leading={
-            <RowIcon tone="harbor">
+            <RowIcon tone="dusk">
               <CheckIcon size={18} />
             </RowIcon>
           }
@@ -88,7 +88,7 @@ async function StartDone() {
       <Group title="Built in, not settings">
         <Row
           leading={
-            <RowIcon tone="harbor">
+            <RowIcon tone="dusk">
               <ShieldIcon size={18} />
             </RowIcon>
           }

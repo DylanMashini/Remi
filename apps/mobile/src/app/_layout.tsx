@@ -19,7 +19,7 @@ const theme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    primary: Colors.harbor,
+    primary: Colors.dusk,
     background: Colors.linen,
     card: Colors.surface,
     text: Colors.ink,

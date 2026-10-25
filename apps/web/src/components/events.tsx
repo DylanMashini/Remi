@@ -1,4 +1,5 @@
 import { AnswerIcon, BellIcon, ChatIcon, MemoryIcon, PersonIcon, QuestionIcon, SpeakerIcon } from "./icons";
+import { HorizonMark } from "./Logo";
 
 export type EventKind = "RECOGNITION" | "UNKNOWN" | "UTTERANCE" | "QUESTION" | "ANSWER" | "REMINDER" | "SPOKEN" | "PRACTICE";
 
@@ -14,13 +15,13 @@ export type EventJson = {
 };
 
 const KINDS: Record<EventKind, { label: string; Icon: typeof PersonIcon; tone: string }> = {
-  RECOGNITION: { label: "Recognized", Icon: PersonIcon, tone: "bg-harbor-mist text-harbor-deep" },
+  RECOGNITION: { label: "Recognized", Icon: PersonIcon, tone: "bg-apricot-mist text-apricot-deep" },
   UNKNOWN: { label: "Someone new", Icon: PersonIcon, tone: "bg-attention-bg text-attention" },
   UTTERANCE: { label: "Conversation", Icon: ChatIcon, tone: "bg-sand text-ink" },
-  QUESTION: { label: "Asked", Icon: QuestionIcon, tone: "bg-sand text-ink" },
-  ANSWER: { label: "Answered", Icon: AnswerIcon, tone: "bg-harbor-mist text-harbor-deep" },
-  REMINDER: { label: "Reminder", Icon: BellIcon, tone: "bg-sand text-ink" },
-  SPOKEN: { label: "Heard", Icon: SpeakerIcon, tone: "bg-harbor text-white" },
+  QUESTION: { label: "Asked Remi", Icon: QuestionIcon, tone: "bg-sand text-ink" },
+  ANSWER: { label: "Remi answered", Icon: AnswerIcon, tone: "bg-dusk-mist text-dusk-deep" },
+  REMINDER: { label: "Remi reminded", Icon: BellIcon, tone: "bg-dusk-mist text-dusk-deep" },
+  SPOKEN: { label: "Remi said", Icon: SpeakerIcon, tone: "bg-dusk text-white" },
   PRACTICE: { label: "Remembered", Icon: MemoryIcon, tone: "bg-apricot-mist text-apricot-deep" },
 };
 
@@ -39,7 +40,7 @@ export function practiceKind(data: unknown): "knew" | "told" | "memory" {
   return d.knew === true ? "knew" : "told";
 }
 
-/** Human label for an event, e.g. "Ruth heard" or "Recognized Sarah". */
+/** Human label for an event, e.g. "Remi said" or "Recognized Sarah". Remi is named, never "the glasses". */
 export function eventTitle(type: string, patientName: string, personName?: string | null, data?: unknown): string {
   switch (type) {
     case "PRACTICE": {
@@ -52,18 +53,18 @@ export function eventTitle(type: string, patientName: string, personName?: strin
       return kind === "knew" ? `${patientName} knew ${who}` : `${patientName} was reminded of ${who}`;
     }
     case "SPOKEN":
-      if ((data as { trigger?: unknown } | null)?.trigger) return `${patientName} asked who was here`;
-      return (data as { source?: unknown } | null)?.source === "chat" ? `${patientName} heard in conversation` : `${patientName} heard`;
+      if ((data as { trigger?: unknown } | null)?.trigger) return `${patientName} asked Remi who was here`;
+      return (data as { source?: unknown } | null)?.source === "chat" ? "Remi said in conversation" : "Remi said";
     case "RECOGNITION":
       return personName ? `Recognized ${personName}` : "Recognized someone";
     case "UNKNOWN":
       return "Someone new was here";
     case "QUESTION":
-      return `${patientName} asked`;
+      return `${patientName} asked Remi`;
     case "ANSWER":
-      return "Recall answered";
+      return "Remi answered";
     case "REMINDER":
-      return "Reminder";
+      return "Remi reminded";
     case "UTTERANCE":
       return "Conversation";
     default:
@@ -71,8 +72,16 @@ export function eventTitle(type: string, patientName: string, personName?: strin
   }
 }
 
+/** SPOKEN rows carry the horizon mark: it is Remi's own avatar. Everything else keeps its icon. */
 export function EventIcon({ type, size = 40 }: { type: string; size?: number }) {
   const { Icon, tone } = kindOf(type);
+  if (type === "SPOKEN") {
+    return (
+      <div style={{ width: size, height: size }} className="flex shrink-0 items-center justify-center rounded-sm bg-dusk-mist">
+        <HorizonMark size={Math.round(size * 0.55)} />
+      </div>
+    );
+  }
   return (
     <div
       style={{ width: size, height: size }}

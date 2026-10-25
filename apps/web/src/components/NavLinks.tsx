@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarIcon, InsightsIcon, LiveIcon, MemoryIcon, PeopleIcon, SettingsIcon, ShieldIcon, SunIcon } from "./icons";
+import { CalendarIcon, InsightsIcon, LiveIcon, MemoryIcon, PeopleIcon, SettingsIcon, ShieldIcon, SunriseIcon } from "./icons";
 
 const PRIMARY = [
-  { href: "/", label: "Today", Icon: SunIcon },
+  { href: "/", label: "Today", Icon: SunriseIcon },
   { href: "/people", label: "People", Icon: PeopleIcon },
   { href: "/remember", label: "Remember", Icon: MemoryIcon },
   { href: "/reminders", label: "Reminders", Icon: CalendarIcon },
@@ -25,7 +25,7 @@ function isActive(pathname: string, href: string) {
 /** Desktop sidebar navigation. */
 export function SideNav() {
   const pathname = usePathname();
-  const item = (href: string, label: string, Icon: typeof SunIcon) => {
+  const item = (href: string, label: string, Icon: typeof SunriseIcon) => {
     const active = isActive(pathname, href);
     return (
       <Link
@@ -33,7 +33,7 @@ export function SideNav() {
         href={href}
         aria-current={active ? "page" : undefined}
         className={`flex h-12 items-center gap-3 rounded-[14px] px-3.5 text-[16px] font-bold no-underline ${
-          active ? "bg-harbor-mist text-harbor-deep hover:text-harbor-deep" : "text-ink-soft hover:bg-linen hover:text-ink"
+          active ? "bg-dusk-mist text-dusk-deep hover:text-dusk-deep" : "text-ink-soft hover:bg-linen hover:text-ink"
         }`}
       >
         <Icon size={20} />
@@ -66,7 +66,7 @@ export function TabBar() {
             href={href}
             aria-current={active ? "page" : undefined}
             className={`flex min-h-[60px] flex-1 flex-col items-center justify-center gap-1 text-[12px] font-bold no-underline ${
-              active ? "text-harbor-deep" : "text-ink-mute hover:text-ink"
+              active ? "text-dusk-deep" : "text-ink-mute hover:text-ink"
             }`}
           >
             <Icon size={22} />

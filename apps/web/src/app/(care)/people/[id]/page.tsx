@@ -58,7 +58,7 @@ async function Person({ params }: { params: Promise<{ id: string }> }) {
             <h1 className="m-0 font-display text-[32px] font-extrabold leading-tight tracking-[-0.6px] sm:text-[38px]">{person.name}</h1>
             <span className="text-[17px] text-ink-soft">
               {person.relationship ? (self ? `Your ${person.relationship}` : `${patientName}'s ${person.relationship}`) : "Relationship not set"}
-              {person.lastSeenAt ? `. Seen ${formatWhenText(person.lastSeenAt, now).replace(/^\w/, (c) => c.toLowerCase())}.` : ". Not seen by the glasses yet."}
+              {person.lastSeenAt ? `. Seen ${formatWhenText(person.lastSeenAt, now).replace(/^\w/, (c) => c.toLowerCase())}.` : ". Not seen by Remi yet."}
             </span>
           </div>
         </header>
@@ -72,7 +72,7 @@ async function Person({ params }: { params: Promise<{ id: string }> }) {
           action={<span className="font-normal text-ink-mute">{person.memories.length ? `${spoken.length} of ${person.memories.length} switched on` : ""}</span>}
           footer={
             person.memories.length
-              ? "Switched on means the glasses can say it. The newest one that is on is spoken after the introduction. The pencil changes the words."
+              ? "Switched on means Remi can say it. The newest one that is on is spoken after the introduction. The pencil changes the words."
               : undefined
           }
         >
@@ -122,8 +122,8 @@ async function Person({ params }: { params: Promise<{ id: string }> }) {
                 {person.visits.slice(0, 8).map((v) => (
                   <Row
                     key={v.id}
-                    leading={v.knew ? <CheckIcon size={18} className="shrink-0 text-harbor-deep" /> : <SpeakerIcon size={18} className="shrink-0 text-ink-mute" />}
-                    title={<span className={v.knew ? "font-bold text-harbor-deep" : ""}>{v.knew ? "Knew right away" : "Heard the introduction"}</span>}
+                    leading={v.knew ? <CheckIcon size={18} className="shrink-0 text-dusk-deep" /> : <SpeakerIcon size={18} className="shrink-0 text-ink-mute" />}
+                    title={<span className={v.knew ? "font-bold text-dusk-deep" : ""}>{v.knew ? "Knew right away" : "Heard the introduction"}</span>}
                     value={formatAgo(v.at, now)}
                     valueTone="mute"
                   />
@@ -135,7 +135,7 @@ async function Person({ params }: { params: Promise<{ id: string }> }) {
           <Group title="Photos and privacy">
             <Row
               leading={
-                <RowIcon tone="harbor" size={40}>
+                <RowIcon tone="dusk" size={40}>
                   <LockIcon size={20} />
                 </RowIcon>
               }

@@ -3,7 +3,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, type TextInputInstance, View } from 'react-native';
 
-import { Button, Field, Icon, Notice, Screen, SheetHeader } from '@/components/ui';
+import { HorizonMark } from '@/components/brand';
+import { Button, Field, Notice, Screen, SheetHeader } from '@/components/ui';
 import { Colors, Gutter, Radii, Spacing, Type } from '@/constants/theme';
 import { api, type PersonDetail } from '@/lib/api';
 import { introductionLine } from '@/lib/format';
@@ -64,8 +65,8 @@ export default function EditPersonScreen() {
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" showsVerticalScrollIndicator={false}>
           <View style={styles.preview}>
             <View style={styles.previewHead}>
-              <Icon name="eyeglasses" size={16} color={Colors.harborDeep} weight="semibold" />
-              <Text style={[Type.secondaryBold, { color: Colors.harborDeep }]}>The glasses will say</Text>
+              <HorizonMark size={18} />
+              <Text style={[Type.secondaryBold, { color: Colors.duskDeep }]}>The glasses will say</Text>
             </View>
             <Text style={styles.previewText}>{preview}</Text>
           </View>
@@ -112,7 +113,7 @@ export default function EditPersonScreen() {
 
 const styles = StyleSheet.create({
   scroll: { paddingHorizontal: Gutter, paddingBottom: Spacing.eight, gap: Spacing.four },
-  preview: { backgroundColor: Colors.harborMist, borderRadius: Radii.md, padding: Spacing.five, gap: Spacing.two },
+  preview: { backgroundColor: Colors.duskMist, borderRadius: Radii.md, padding: Spacing.five, gap: Spacing.two },
   previewHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   previewText: { ...Type.spoken, fontSize: 22, lineHeight: 29, color: Colors.ink },
 });

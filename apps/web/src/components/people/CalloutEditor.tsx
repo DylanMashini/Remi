@@ -9,7 +9,7 @@ import { HearPreview } from "./HearPreview";
 import { buttonPrimary, buttonQuiet, buttonText, Field, FormStatus, inputClass, Spoken } from "../ui";
 
 /**
- * The introduction: the exact line the glasses say when this person walks up, with an inline
+ * The introduction: the exact line Remi says when this person walks up, with an inline
  * editor for name, relationship, and the note (the first part of the line).
  */
 export function CalloutEditor({ person, patientName, self = false }: { person: PersonJson; patientName: string; self?: boolean }) {
@@ -27,10 +27,10 @@ export function CalloutEditor({ person, patientName, self = false }: { person: P
   const preview = knownLine({ name: draft.name.trim() || person.name, relationship: draft.relationship.trim() || null, notes: draft.notes.trim() || null, memory: memory || null });
 
   return (
-    <section className="flex flex-col gap-4 rounded-lg bg-harbor-mist p-5 sm:p-7">
-      <div className="flex flex-wrap items-center gap-2 text-[15px] font-bold text-harbor-deep">
+    <section className="flex flex-col gap-4 rounded-lg bg-dusk-mist p-5 sm:p-7">
+      <div className="flex flex-wrap items-center gap-2 text-[15px] font-bold text-dusk-deep">
         <SpeakerIcon size={18} />
-        What the glasses say when {person.name.split(" ")[0]} walks up
+        What Remi says when {person.name.split(" ")[0]} walks up
         <span className="ml-auto flex items-center gap-2">
           <HearPreview text={editing ? preview : person.line} />
           {!editing ? (
@@ -45,7 +45,7 @@ export function CalloutEditor({ person, patientName, self = false }: { person: P
         {editing ? preview : person.line}
       </Spoken>
       {!editing ? (
-        <p className="m-0 text-[15px] text-ink-soft">Name, relationship, your note, then the newest memory switched on below. Change any part and the glasses change with it.</p>
+        <p className="m-0 text-[15px] text-ink-soft">Name, relationship, your note, then the newest memory switched on below. Change any part and Remi changes with it.</p>
       ) : (
         <form action={formAction} className="flex flex-col gap-5 rounded-md bg-surface p-5">
           <div className="grid gap-5 sm:grid-cols-2">

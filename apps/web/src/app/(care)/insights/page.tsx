@@ -95,13 +95,13 @@ async function Insights() {
     <>
       <PageHeader
         title="Insights"
-        lead={`Patterns from the last seven days: who ${who === "you" ? "you" : patientName} saw, what was asked, and when the glasses were busiest. Built from moments only; nothing here comes from stored video.`}
+        lead={`Patterns from the last seven days: who ${who === "you" ? "you" : patientName} saw, what was asked, and when Remi was busiest. Built from moments only; nothing here comes from stored video.`}
       />
 
       {quiet ? (
         <div className="rounded-md bg-surface">
           <EmptyState icon={<ClockIcon size={30} />} title="Nothing to show yet">
-            Patterns appear after the glasses have recognized a few people or answered a few questions. Come back after a day of use.
+            Patterns appear after Remi has recognized a few people or answered a few questions. Come back after a day of use.
           </EmptyState>
         </div>
       ) : (
@@ -182,7 +182,7 @@ async function Insights() {
                     </RowIcon>
                   }
                   title={questions.length ? "No question was repeated" : "No questions this week"}
-                  detail={questions.length ? `${questions.length} ${questions.length === 1 ? "question" : "questions"} asked, each once.` : `${who === "you" ? "Tap the phone" : `${patientName} taps the phone`} to ask the glasses something.`}
+                  detail={questions.length ? `${questions.length} ${questions.length === 1 ? "question" : "questions"} asked, each once.` : `${who === "you" ? "Tap the phone" : `${patientName} taps the phone`} to ask Remi something.`}
                 />
               ) : (
                 askedMost.map(([text, n]) => (
@@ -202,10 +202,10 @@ async function Insights() {
             </Group>
           </div>
 
-          <Group title="When the glasses were busiest" footer="Hours with the most recognitions. Useful for planning visits and reminders.">
+          <Group title="When Remi was busiest" footer="Hours with the most recognitions. Useful for planning visits and reminders.">
             <Row
               leading={
-                <RowIcon tone="harbor" size={40}>
+                <RowIcon tone="dusk" size={40}>
                   <ClockIcon size={20} />
                 </RowIcon>
               }
@@ -231,7 +231,7 @@ async function Insights() {
 }
 
 /**
- * Single-series bar chart: one hue (harbor), thin marks, rounded tops anchored to the baseline,
+ * Single-series bar chart: one hue (dusk), thin marks, rounded tops anchored to the baseline,
  * a 2px gap between bars, labels only on the max. Native tooltips carry the exact value.
  */
 function DayBars({ days }: { days: { key: string; date: Date; recognitions: number }[] }) {
@@ -260,7 +260,7 @@ function DayBars({ days }: { days: { key: string; date: Date; recognitions: numb
             {h > 0 ? (
               <path
                 d={`M${x} ${pad.t + innerH} V${y + 4} a4 4 0 0 1 4 -4 h${barW - 8} a4 4 0 0 1 4 4 V${pad.t + innerH} Z`}
-                fill={today ? "var(--color-harbor)" : "var(--color-harbor-mist-deep)"}
+                fill={today ? "var(--color-dusk)" : "var(--color-dusk-mist-deep)"}
               />
             ) : (
               <rect x={x} y={pad.t + innerH - 2} width={barW} height={2} rx={1} fill="var(--color-sand)" />

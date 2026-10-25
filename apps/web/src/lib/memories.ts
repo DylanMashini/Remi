@@ -104,7 +104,7 @@ export function cleanCallout(input: unknown): string {
   return cleanMemoryText(input, MAX_CALLOUT);
 }
 
-/** Newest memory the glasses should say for this person, or null. */
+/** Newest memory Remi should say for this person, or null. */
 export async function calloutFor(personId: string): Promise<string | null> {
   const m = await prisma.memory.findFirst({
     where: { personId, useInCallout: true },
