@@ -34,6 +34,12 @@ final class GlassesController {
   private var camera: Camera?
   private var audioEnabledInStream = false
   private var registrationToken: (any AnyListenerToken)?
+  /// Bluetooth link of the glasses as Meta AI reports it, independent of any DAT session. A session
+  /// only exists while a stream runs, so without this the screen says "not connected" whenever the
+  /// glasses are paired and idle.
+  private var linkState: LinkState = .disconnected
+  private var devicesToken: (any AnyListenerToken)?
+  private var linkTokens: [any AnyListenerToken] = []
   private let sessionTokens = ListenerTokenBag()
   private let streamTokens = ListenerTokenBag()
   /// Inputs capability (beta): the glasses' capture button answers "who is here?" on demand.
@@ -67,6 +73,10 @@ final class GlassesController {
         NSLog("[Glasses] registration: \(state.description)")
         self.emitStatus()
       }
+    }
+    watchDevices(Wearables.shared.devices)
+    devicesToken = Wearables.shared.addDevicesListener { [weak self] devices in
+      Task { @MainActor in self?.watchDevices(devices) }
     }
 
     speaker.onRoute = { [weak self] route, port in
@@ -132,6 +142,42 @@ final class GlassesController {
     }
   }
 
+  // MARK: Devices
+
+  /// Re-subscribes to the link state of every paired device (real or mock). The best link across
+  /// devices is what `status()` reports when there is no session.
+  private func watchDevices(_ ids: [DeviceIdentifier]) {
+    let old = linkTokens
+    linkTokens = []
+    Task { for t in old { await t.cancel() } }
+    var devices: [Device] = []
+    for id in ids {
+      guard let d = Wearables.shared.deviceForIdentifier(id) else { continue }
+      devices.append(d)
+      linkTokens.append(d.addLinkStateListener { [weak self] _ in
+        Task { @MainActor in self?.refreshLinkState() }
+      })
+    }
+    NSLog("[Glasses] devices: \(devices.map { "\($0.nameOrId()) \($0.linkState)" })")
+    refreshLinkState()
+  }
+
+  private func refreshLinkState() {
+    var best: LinkState = .disconnected
+    for id in Wearables.shared.devices {
+      guard let d = Wearables.shared.deviceForIdentifier(id) else { continue }
+      switch d.linkState {
+      case .connected: best = .connected
+      case .connecting: if best != .connected { best = .connecting }
+      case .disconnected: break
+      }
+    }
+    guard best != linkState else { return }
+    NSLog("[Glasses] link: \(linkState) -> \(best)")
+    linkState = best
+    emitStatus()
+  }
+
   // MARK: Roster
 
   /// Re-embeds the roster from the server's enrollment photos. Call after enrolling or editing people.
@@ -165,11 +211,19 @@ final class GlassesController {
     case .registering: reg = "registering"
     default: reg = "unregistered"
     }
+    // A session exists only while streaming; between streams the Bluetooth link is the truth.
     let conn: String
     switch sessionState {
     case .started?, .paused?: conn = "connected"
     case .starting?: conn = "connecting"
-    default: conn = connecting ? "connecting" : "disconnected"
+    default:
+      if connecting { conn = "connecting" } else {
+        switch linkState {
+        case .connected: conn = "connected"
+        case .connecting: conn = "connecting"
+        case .disconnected: conn = "disconnected"
+        }
+      }
     }
     let roster = LocalRecognition.shared.rosterCounts
     return [
