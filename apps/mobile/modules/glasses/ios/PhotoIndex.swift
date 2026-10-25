@@ -342,7 +342,13 @@ final class PhotoIndex {
 
   private func runLoop() {
     defer {
-      lock.lock(); working = false; lock.unlock()
+      // A stream can start and stop (or the app resume) while this loop is still finishing an asset;
+      // those resume() calls saw `working` and backed off, so pick the work back up here.
+      lock.lock()
+      let again = shouldRun && !streaming && !finished && lastError == nil
+      working = again
+      lock.unlock()
+      if again { queue.async { [self] in runLoop() } }
     }
     do { try FaceRecognizer.shared.load() } catch {
       lock.lock(); lastError = error.localizedDescription; shouldRun = false; lock.unlock()

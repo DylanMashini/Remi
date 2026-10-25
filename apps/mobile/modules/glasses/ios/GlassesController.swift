@@ -20,7 +20,11 @@ final class GlassesController {
   private(set) var registration: RegistrationState = .unavailable
   private var sessionState: DeviceSessionState?
   private var connecting = false
-  private(set) var streaming = false
+  /// Every path that changes this (stopStream, stream state, session .stopped on disconnect) keeps
+  /// the library indexer in sync: it yields the CPU to recognition while a stream runs.
+  private(set) var streaming = false {
+    didSet { if streaming != oldValue { PhotoIndex.shared.setStreaming(streaming) } }
+  }
   private(set) var mock = false
   private var audioRoute = "other"
 
@@ -268,10 +272,8 @@ final class GlassesController {
     audio.setAmbient(true)
     camera.stream.start()
 
+    // `streaming` flipping true also pauses the library indexer (see its didSet).
     try await waitUntil(timeout: 20, "camera stream to start") { [weak self] in self?.streaming == true }
-    // The library indexer yields the CPU to recognition while a stream runs (it never reads the roster,
-    // and the roster never reads it; this is only about keeping the 2 s recognition budget).
-    PhotoIndex.shared.setStreaming(true)
 
     // If the glasses don't deliver audio within a few seconds, use the phone mic for ambient.
     Task { @MainActor [weak self] in
@@ -290,7 +292,6 @@ final class GlassesController {
     if streaming { streaming = false }
     failPhoto(GlassesError("Stream stopped"))
     FrameHub.shared.publish(nil)
-    PhotoIndex.shared.setStreaming(false)
     emitStatus()
   }
 
