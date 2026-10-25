@@ -10,11 +10,14 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
   struct Line {
     let speechId: String?
     let text: String
+    /// Stereo position, -1 (left) to 1 (right). Where the recognized face was in the frame, so
+    /// over A2DP the name comes from the side the person is standing on. 0 for answers/reminders.
+    let pan: Float
     let completion: ((String) -> Void)?
   }
 
   var onRoute: ((String, String) -> Void)?   // (route, portName)
-  var onSpoken: ((String, String) -> Void)?  // (text, route)
+  var onSpoken: ((String, String, Float) -> Void)?  // (text, route, pan)
   var onError: ((String) -> Void)?
 
   /// Set by AudioCapture while it needs the mic (play-and-record); otherwise playback-only.
@@ -200,9 +203,11 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
 
   // MARK: Queue
 
-  func enqueue(speechId: String?, text: String, completion: ((String) -> Void)? = nil) {
+  /// `pan` is -1 (left) to 1 (right); values outside are clamped.
+  func enqueue(speechId: String?, text: String, pan: Float = 0, completion: ((String) -> Void)? = nil) {
+    let clamped = max(-1, min(1, pan.isFinite ? pan : 0))
     DispatchQueue.main.async {
-      self.queue.append(Line(speechId: speechId, text: text, completion: completion))
+      self.queue.append(Line(speechId: speechId, text: text, pan: clamped, completion: completion))
       self.playNextIfIdle()
     }
   }
@@ -214,6 +219,7 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     configureSession()
     let route = checkRoute()
     if route != "a2dp" { NSLog("[Glasses] WARNING speaking over \(route), not glasses A2DP") }
+    if line.pan != 0 { NSLog("[Glasses] pan \(String(format: "%.2f", line.pan)) (\(Self.panLabel(line.pan)))") }
 
     guard let speechId = line.speechId, !speechId.isEmpty else {
       NSLog("[Glasses] no speechId, using Apple speech")
@@ -222,7 +228,7 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     }
     if let data = Self.cached(speechId) {
       NSLog("[Glasses] speech \(speechId) from cache")
-      playAudio(data, fallbackText: line.text)
+      playAudio(data, pan: line.pan, fallbackText: line.text)
       return
     }
     downloadTask = Task {
@@ -230,7 +236,7 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
       do {
         let data = try await Self.fetch(speechId, timeout: 8)
         NSLog("[Glasses] speech \(speechId) downloaded in \(Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)) ms")
-        await MainActor.run { self.playAudio(data, fallbackText: line.text) }
+        await MainActor.run { self.playAudio(data, pan: line.pan, fallbackText: line.text) }
       } catch {
         NSLog("[Glasses] TTS download failed, using Apple speech: \(error.localizedDescription)")
         await MainActor.run { self.speakWithSynth(line.text) }
@@ -238,10 +244,18 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     }
   }
 
-  private func playAudio(_ data: Data, fallbackText: String) {
+  static func panLabel(_ pan: Float) -> String {
+    if pan <= -0.2 { return "left" }
+    if pan >= 0.2 { return "right" }
+    return "centre"
+  }
+
+  private func playAudio(_ data: Data, pan: Float, fallbackText: String) {
     do {
       let p = try AVAudioPlayer(data: data)
       p.delegate = self
+      // Stereo position of the whisper (A2DP is stereo; HFP/mono routes just ignore it).
+      p.pan = pan
       player = p
       if !p.play() { throw GlassesError("AVAudioPlayer.play returned false") }
     } catch {
@@ -251,6 +265,7 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     }
   }
 
+  /// Fallback voice. AVSpeechSynthesizer has no pan, so this plays centred.
   private func speakWithSynth(_ text: String) {
     let u = AVSpeechUtterance(string: text)
     u.voice = AVSpeechSynthesisVoice(language: "en-US")
@@ -263,8 +278,8 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     current = nil
     player = nil
     let route = currentRoute
-    NSLog("[Glasses] spoke over \(route): \(line.text)")
-    onSpoken?(line.text, route)
+    NSLog("[Glasses] spoke over \(route) (\(Self.panLabel(line.pan))): \(line.text)")
+    onSpoken?(line.text, route, line.pan)
     line.completion?(route)
     playNextIfIdle()
   }

@@ -23,8 +23,18 @@ export type SpokenLine = {
   source: SpokenSource;
   at: number;
   route?: string; // filled when onSpoken arrives
+  /** -1 (left) to 1 (right): the side of the frame the recognized face was on. */
+  pan?: number;
   question?: string; // for answers
 };
+
+/** Which ear a line was whispered into, for the screen. Null when centred or unknown. */
+export function panSide(pan?: number): 'left' | 'right' | null {
+  if (pan == null) return null;
+  if (pan <= -0.2) return 'left';
+  if (pan >= 0.2) return 'right';
+  return null;
+}
 
 export type Feed = {
   status: GlassesStatus;
@@ -105,20 +115,20 @@ export function useGlassesFeed() {
           frameHeight: r.frameHeight || state.frameHeight,
           lastFrameAt: Date.now(),
         });
-        if (r.speak?.text) pushSpoken(r.speak.text, 'recognition');
+        if (r.speak?.text) pushSpoken(r.speak.text, 'recognition', { pan: r.speak.pan });
       }),
       addGlassesListener('onAudioRoute', ({ route, portName }) =>
         set({ status: { ...state.status, audioRoute: route }, portName })
       ),
-      addGlassesListener('onSpoken', ({ text, route }) => {
-        // Attach the actual route to the newest matching line (or log it if we never saw it).
+      addGlassesListener('onSpoken', ({ text, route, pan }) => {
+        // Attach the actual route (and side) to the newest matching line, or log it if we never saw it.
         const idx = state.spoken.findIndex((l) => l.text === text && !l.route);
         if (idx >= 0) {
           const spoken = state.spoken.slice();
-          spoken[idx] = { ...spoken[idx], route };
+          spoken[idx] = { ...spoken[idx], route, pan };
           set({ spoken });
         } else {
-          pushSpoken(text, 'recognition', { route });
+          pushSpoken(text, 'recognition', { route, pan });
         }
       }),
       addGlassesListener('onError', ({ message }) => reportError(message)),

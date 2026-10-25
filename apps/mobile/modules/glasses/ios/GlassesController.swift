@@ -78,8 +78,8 @@ final class GlassesController {
         if changed { self.emitStatus() }
       }
     }
-    speaker.onSpoken = { [weak self] text, route in
-      Task { @MainActor in self?.emit("onSpoken", ["text": text, "route": route]) }
+    speaker.onSpoken = { [weak self] text, route, pan in
+      Task { @MainActor in self?.emit("onSpoken", ["text": text, "route": route, "pan": pan]) }
     }
     speaker.onError = { [weak self] msg in
       Task { @MainActor in self?.emitError(msg) }
@@ -118,10 +118,10 @@ final class GlassesController {
     local.onResult = { [weak self] obj, w, h in
       Task { @MainActor in self?.handleFrameResult(obj, width: w, height: h) }
     }
-    local.onSpeak = { [weak self] speechId, text in
+    local.onSpeak = { [weak self] speechId, text, pan in
       Task { @MainActor in
-        NSLog("[Glasses] speak: \(text)")
-        self?.speaker.enqueue(speechId: speechId, text: text)
+        NSLog("[Glasses] speak (\(Speaker.panLabel(pan))): \(text)")
+        self?.speaker.enqueue(speechId: speechId, text: text, pan: pan)
       }
     }
     local.onError = { [weak self] msg in
@@ -558,7 +558,7 @@ final class GlassesController {
       "frameHeight": height,
     ]
     if let speak = obj["speak"] as? [String: Any], let text = speak["text"] as? String, !text.isEmpty {
-      body["speak"] = ["speechId": speak["speechId"] as? String ?? "", "text": text]
+      body["speak"] = ["speechId": speak["speechId"] as? String ?? "", "text": text, "pan": speak["pan"] as? Float ?? 0]
     }
     emit("onFrameResult", body)
   }

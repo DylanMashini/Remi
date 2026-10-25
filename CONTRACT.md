@@ -253,10 +253,10 @@ type GlassesStatus = {
 
 Events:
 onStatus(status: GlassesStatus)
-onFrameResult({ faces: Face[]; speak?: { speechId: string; text: string }; frameWidth: number; frameHeight: number })
+onFrameResult({ faces: Face[]; speak?: { speechId: string; text: string; pan: number }; frameWidth: number; frameHeight: number })
   // matched on the phone; speak.speechId is "" until /api/recognitions answers
 onAudioRoute({ route: GlassesStatus["audioRoute"]; portName: string })
-onSpoken({ text: string; route: string })      // after each line plays
+onSpoken({ text: string; route: string; pan: number })      // after each line plays
 onError({ message: string })
 onPhotoIndex(status: PhotoIndexStatus)        // at most every 500 ms while indexing, and on every state change
 
@@ -264,6 +264,13 @@ View: <GlassesPreview style={...} />           // renders latest frame natively
 ```
 Swift speaks the line itself (no JS round trip) and still emits `onFrameResult` so the UI can
 draw boxes and show the line.
+
+**Spatial whisper.** `pan` is -1 (hard left) to 1 (hard right), 0 centre. The phone computes it from
+the horizontal centre of the announced face box in the camera frame (`LocalRecognition.pan(for:)`:
+offset from frame centre, times 1.5, clamped), averaged when one line names several people; answers
+and reminders are 0. `Speaker` applies it as `AVAudioPlayer.pan` on the ElevenLabs audio, so over
+A2DP the glasses say the name from the side the person is on. Only the phone-side event carries it;
+nothing is sent to the server. The Apple-speech fallback plays centred (AVSpeechSynthesizer has no pan).
 
 ## Environment (`apps/web/.env`, see `.env.example`)
 

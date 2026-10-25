@@ -28,7 +28,8 @@ export type Face = {
   score?: number;
 };
 
-export type Speak = { speechId: string; text: string };
+/** `pan` is -1 (left) to 1 (right): where the announced face sits in the frame. */
+export type Speak = { speechId: string; text: string; pan: number };
 
 export type FrameResult = {
   faces: Face[];
@@ -65,7 +66,8 @@ type Events = {
   onPhotoIndex: PhotoIndexStatus;
   onFrameResult: FrameResult;
   onAudioRoute: { route: AudioRoute; portName: string };
-  onSpoken: { text: string; route: string };
+  /** `pan` is -1 (left) to 1 (right): the side the line was heard from. */
+  onSpoken: { text: string; route: string; pan: number };
   onError: { message: string };
   /** The wearer pressed a button on the glasses (capture = top right of the right temple). */
   onButton: { button: 'capture' | 'action' };

@@ -25,7 +25,7 @@ import {
   Wordmark,
 } from '@/components/ui';
 import { Colors, Fonts, Gutter, Radii, Shadow, Spacing, Type } from '@/constants/theme';
-import { clearError, dismissReminder, pushSpoken, reportError, setStatus, useFeed, type SpokenLine } from '@/lib/feed';
+import { clearError, dismissReminder, panSide, pushSpoken, reportError, setStatus, useFeed, type SpokenLine } from '@/lib/feed';
 import { timeOf } from '@/lib/format';
 import { errorMessage, Glasses, GlassesPreviewView, type GlassesStatus } from '@/lib/glasses';
 import { useSession, wearerName } from '@/lib/session';
@@ -42,11 +42,13 @@ function statusPill(status: GlassesStatus, portName: string | null): { tone: 'go
   return { tone: 'idle', label: 'Glasses not connected' };
 }
 
-function routeText(route?: string): { text: string; warn: boolean } | null {
+function routeText(route?: string, pan?: number): { text: string; warn: boolean } | null {
   if (!route) return null;
   const r = route.toLowerCase();
   if (r.includes('a2dp') || r.includes('hfp') || r.includes('bluetooth') || r.includes('glasses')) {
-    return { text: 'Spoken through the glasses', warn: false };
+    // A2DP is stereo: the name is whispered from the side the person is standing on.
+    const side = r.includes('a2dp') ? panSide(pan) : null;
+    return { text: side ? `Whispered in the ${side} ear` : 'Spoken through the glasses', warn: false };
   }
   if (r.includes('speaker')) return { text: 'Played on the phone speaker', warn: true };
   return { text: `Played on ${route}`, warn: true };
@@ -163,7 +165,7 @@ export default function LiveScreen() {
   };
 
   const last = feed.spoken[0];
-  const lastRoute = routeText(last?.route);
+  const lastRoute = routeText(last?.route, last?.pan);
   const pill = statusPill(status, feed.portName);
   const viewfinderHeight = Math.max(300, Math.round(height * 0.42));
 

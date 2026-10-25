@@ -52,13 +52,16 @@ final class LocalRecognition {
   /// the glasses saw a moment ago instead of waiting a full detection cycle.
   private var lastMatches: [Match] = []
   private var lastResultAt = Date.distantPast
+  /// Width of the frame `lastMatches` came from (for the pan of an on-demand answer).
+  private var lastFrameWidth = 0
   private var onDemandInFlight = false
 
   /// `{faces, speak?}` for the UI plus the frame size.
   var onResult: (([String: Any], Int, Int) -> Void)?
   var onError: ((String) -> Void)?
-  /// Called with (speechId?, text) when a line should be spoken.
-  var onSpeak: ((String?, String) -> Void)?
+  /// Called with (speechId?, text, pan) when a line should be spoken. `pan` is -1 (left) to 1
+  /// (right): where the announced face sits in the frame, so the whisper comes from that side.
+  var onSpeak: ((String?, String, Float) -> Void)?
   /// Called after a roster sync with every speechId the glasses may need, so audio can be prefetched.
   var onRosterSpeech: (([String]) -> Void)?
 
@@ -153,6 +156,31 @@ final class LocalRecognition {
 
   struct Match { let box: [Int]; let score: Float; let person: Person? }
 
+  // MARK: Spatial pan
+
+  /// Horizontal offset from frame centre is pushed by this much before clamping, so a face a third
+  /// of the way across the frame already sounds fully to one side (the glasses camera is wide and
+  /// faces rarely reach the edges).
+  static let panGain: Float = 1.5
+
+  /// Stereo pan, -1 (left) to 1 (right), for a face box `[x, y, w, h]` in a frame `width` px wide.
+  /// The glasses camera looks out from the wearer's face and is not mirrored, so the left of the
+  /// frame is the wearer's left.
+  static func pan(for box: [Int], frameWidth: Int) -> Float {
+    guard box.count >= 3, frameWidth > 0 else { return 0 }
+    let centre = Float(box[0]) + Float(box[2]) / 2
+    let offset = (centre / Float(frameWidth) - 0.5) * 2  // -1 .. 1
+    return max(-1, min(1, offset * panGain))
+  }
+
+  /// One pan for a line that names several faces: the mean of their positions (two people either
+  /// side of the wearer land in the centre).
+  static func pan(for boxes: [[Int]], frameWidth: Int) -> Float {
+    guard !boxes.isEmpty else { return 0 }
+    let sum = boxes.reduce(Float(0)) { $0 + pan(for: $1, frameWidth: frameWidth) }
+    return (sum / Float(boxes.count) * 100).rounded() / 100
+  }
+
   /// A person's score is their best sample; known if ≥ threshold.
   func match(_ detections: [FaceRecognizer.Detection]) -> [Match] {
     lock.lock(); let samples = self.samples, people = self.people; lock.unlock()
@@ -220,7 +248,7 @@ final class LocalRecognition {
       return
     }
     let matches = match(detections)
-    withLock { lastMatches = matches; lastResultAt = Date() }
+    withLock { lastMatches = matches; lastResultAt = Date(); lastFrameWidth = w }
     var faces: [[String: Any]] = []
     for m in matches {
       var f: [String: Any] = ["box": m.box, "score": m.score]
@@ -236,18 +264,21 @@ final class LocalRecognition {
     var events: [[String: Any]] = []
     var lines: [String] = []
     var lineIds: [String?] = []
+    var spokenBoxes: [[Int]] = []  // faces the line is about, for the stereo pan
     var announced = Set<String>()
     for m in matches {
       guard let p = m.person, !announced.contains(p.id), shouldAnnouncePerson(p.id) else { continue }
       announced.insert(p.id)
       lines.append(p.line)
       lineIds.append(p.speechId)
+      spokenBoxes.append(m.box)
       events.append(["personId": p.id, "score": m.score, "box": m.box])
     }
     let unknown = matches.filter { $0.person == nil }
     if lines.isEmpty, let first = unknown.first, matches.allSatisfy({ $0.person == nil }), shouldAnnounceUnknown() {
       lines.append(Self.unknownLine)
       lineIds.append(withLock { unknownSpeechId })
+      spokenBoxes.append(first.box)
       events.append(["personId": NSNull(), "score": first.score, "box": first.box, "count": unknown.count])
     }
 
@@ -255,7 +286,8 @@ final class LocalRecognition {
     let localText = lines.joined(separator: " ")
     // The roster's speechId is only valid for a single line (ids hash the exact text).
     let localSpeechId: String? = lines.count == 1 ? lineIds[0] : nil
-    if !lines.isEmpty { body["speak"] = ["speechId": localSpeechId ?? "", "text": localText] }
+    let pan = Self.pan(for: spokenBoxes, frameWidth: w)
+    if !lines.isEmpty { body["speak"] = ["speechId": localSpeechId ?? "", "text": localText, "pan": pan] }
     onResult?(body, w, h)
     // `image` goes out of scope here: the frame is discarded, never written anywhere.
 
@@ -268,7 +300,7 @@ final class LocalRecognition {
         let req = try BackendClient.shared.request("/api/recognitions", method: "POST", contentType: "application/json", body: data, timeout: 8)
         let obj = try await BackendClient.shared.sendJSON(req)
         if let speak = obj["speak"] as? [String: Any], let text = speak["text"] as? String, !text.isEmpty {
-          onSpeak?(speak["speechId"] as? String, text)
+          onSpeak?(speak["speechId"] as? String, text, pan)
           return
         }
       } catch {
@@ -276,7 +308,7 @@ final class LocalRecognition {
       }
       // Offline fallback: the roster's speechId is usually already cached on the phone, so this is
       // still the ElevenLabs voice; Apple speech only if the audio was never fetched.
-      onSpeak?(localSpeechId, localText)
+      onSpeak?(localSpeechId, localText, pan)
     }
   }
 
@@ -298,9 +330,11 @@ final class LocalRecognition {
     defer { withLock { onDemandInFlight = false } }
 
     let matches = await latestMatches()
+    let frameWidth = withLock { lastFrameWidth }
     var events: [[String: Any]] = []
     var lines: [String] = []
     var lineIds: [String?] = []
+    var spokenBoxes: [[Int]] = []
     var named = Set<String>()
     for m in matches {
       guard let p = m.person, !named.contains(p.id) else { continue }
@@ -308,6 +342,7 @@ final class LocalRecognition {
       markAnnounced("p:\(p.id)")
       lines.append(p.line)
       lineIds.append(p.speechId)
+      spokenBoxes.append(m.box)
       events.append(["personId": p.id, "score": m.score, "box": m.box])
     }
     let unknown = matches.filter { $0.person == nil }
@@ -315,6 +350,7 @@ final class LocalRecognition {
       markAnnounced("unknown")
       lines.append(named.isEmpty ? Self.unknownLine : Self.unknownAlsoLine)
       lineIds.append(named.isEmpty ? withLock { unknownSpeechId } : nil)
+      spokenBoxes.append(first.box)
       events.append(["personId": NSNull(), "score": first.score, "box": first.box, "count": unknown.count])
     }
     if lines.isEmpty {
@@ -323,6 +359,7 @@ final class LocalRecognition {
     }
     let localText = lines.joined(separator: " ")
     let localSpeechId: String? = lines.count == 1 ? lineIds[0] : nil
+    let pan = Self.pan(for: spokenBoxes, frameWidth: frameWidth)
     NSLog("[Glasses] who is here (\(trigger)): \(matches.count) face(s), \(named.count) known -> \(localText)")
 
     do {
@@ -330,13 +367,13 @@ final class LocalRecognition {
       let req = try BackendClient.shared.request("/api/recognitions", method: "POST", contentType: "application/json", body: data, timeout: 8)
       let obj = try await BackendClient.shared.sendJSON(req)
       if let speak = obj["speak"] as? [String: Any], let text = speak["text"] as? String, !text.isEmpty {
-        onSpeak?(speak["speechId"] as? String, text)
+        onSpeak?(speak["speechId"] as? String, text, pan)
         return text
       }
     } catch {
       report("Recognition log failed (spoke locally): \(error.localizedDescription)")
     }
-    onSpeak?(localSpeechId, localText)
+    onSpeak?(localSpeechId, localText, pan)
     return localText
   }
 

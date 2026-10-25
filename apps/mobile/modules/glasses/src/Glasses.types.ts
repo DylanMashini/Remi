@@ -22,7 +22,8 @@ export type Face = {
   score: number;
 };
 
-export type SpeakLine = { speechId: string; text: string };
+/** `pan` is -1 (left) to 1 (right): where the announced face was in the frame. */
+export type SpeakLine = { speechId: string; text: string; pan: number };
 
 /** Result of matching one frame on the phone. The frame itself is discarded. */
 export type FrameResult = {
@@ -98,7 +99,7 @@ export type GlassesModuleEvents = {
   onStatus: (status: GlassesStatus) => void;
   onFrameResult: (result: FrameResult) => void;
   onAudioRoute: (event: { route: AudioRoute; portName: string }) => void;
-  onSpoken: (event: { text: string; route: string }) => void;
+  onSpoken: (event: { text: string; route: string; pan: number }) => void;
   onError: (event: { message: string }) => void;
   /** At most every 500 ms while indexing, and once on every state change. */
   onPhotoIndex: (status: PhotoIndexStatus) => void;
