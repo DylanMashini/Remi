@@ -28,10 +28,13 @@ import {
 import { useSession, wearerName } from '@/lib/session';
 
 const MAX_PHOTOS = 3;
-/** Gap between burst shots. Long enough for the person to turn a little, so the three
- * embeddings are not near-duplicates; a full burst still fits in a 10 s live enrollment. */
-const BURST_GAP_MS = 1200;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** What to ask for before each shot, so the three embeddings are not near-duplicates. */
+const SHOT_HINTS = [
+  'Face the camera, then tap the shutter.',
+  'Nice. Now turn a little to one side.',
+  'One more, a bit closer or farther away.',
+] as const;
+const SHUTTER = 72;
 
 export default function AddPersonScreen() {
   const { account } = useSession();
@@ -46,6 +49,7 @@ export default function AddPersonScreen() {
   const [ready, setReady] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const [shooting, setShooting] = useState(false);
+  const [flash, setFlash] = useState(false);
   const [name, setName] = useState('');
   const [relationship, setRelationship] = useState('');
   const [notes, setNotes] = useState('');
@@ -64,6 +68,7 @@ export default function AddPersonScreen() {
   const wearer = account?.role === 'WEARER';
   const glassesReady = status.connection === 'connected' && !status.mock;
   const seedUri = photos[0];
+  const full = photos.length >= MAX_PHOTOS;
   const indexHasFaces = (photoIndex?.faces ?? 0) > 0;
   // Results are keyed by the seed photo, so a changed first photo clears the grid without a setState.
   const candidates = seedUri && indexHasFaces && found?.seed === seedUri ? found.list : [];
@@ -127,7 +132,7 @@ export default function AddPersonScreen() {
       setPhotos((p) => {
         if (p.includes(file)) return p;
         if (p.length < MAX_PHOTOS) return [...p, file];
-        // The strip is full (the burst fills all three): swap the newest live photo out, never
+        // The strip is full: swap the newest live photo out, never
         // the seed (photo 1). If every slot is a library pick, swap the newest of those.
         const libraryUris = new Set(Object.values(exported));
         let idx = -1;
@@ -167,21 +172,18 @@ export default function AddPersonScreen() {
     return pic?.uri ?? null;
   };
 
-  // One tap fills the remaining slots in a quick burst.
-  const burst = async () => {
-    if (!camera.current || shooting) return;
+  // One tap, one photo. Suggestions from the library appear as soon as the first one lands.
+  const takePhoto = async () => {
+    if (!camera.current || shooting || photos.length >= MAX_PHOTOS) return;
     setShooting(true);
     setError(null);
     try {
-      const got: string[] = [...photos];
-      while (got.length < MAX_PHOTOS) {
-        const uri = await takeOne();
-        if (!uri) break;
-        got.push(uri);
-        setPhotos([...got]);
-        if (got.length < MAX_PHOTOS) await sleep(BURST_GAP_MS);
+      const uri = await takeOne();
+      if (uri) {
+        setFlash(true);
+        setTimeout(() => setFlash(false), 90);
+        setPhotos((p) => (p.length < MAX_PHOTOS ? [...p, uri] : p));
       }
-      if (!name) nameRef.current?.focus();
     } catch (e) {
       setError(`The camera didn't respond: ${errorMessage(e)}`);
     } finally {
@@ -190,6 +192,7 @@ export default function AddPersonScreen() {
   };
 
   const fromGlasses = async () => {
+    if (full) return;
     setError(null);
     try {
       const uri = await Glasses.captureGlassesPhoto();
@@ -266,20 +269,44 @@ export default function AddPersonScreen() {
             {permission?.granted ? (
               <>
                 <CameraView ref={camera} style={StyleSheet.absoluteFill} facing={facing} onCameraReady={() => setReady(true)} />
+                {flash ? <View style={[StyleSheet.absoluteFill, styles.flash]} pointerEvents="none" /> : null}
                 <View style={styles.guide} pointerEvents="none" />
-                <IconButton
-                  name="camera.rotate"
-                  label="Switch camera"
-                  tone="night"
-                  size={40}
-                  onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
-                  style={styles.flip}
-                />
+
+                <View style={styles.hintPill} pointerEvents="none">
+                  <Text style={styles.hintText}>{full ? 'Three photos ready.' : SHOT_HINTS[photos.length]}</Text>
+                </View>
+
+                <View style={styles.controls}>
+                  <View style={styles.controlSide}>
+                    {glassesReady ? (
+                      <IconButton name="eyeglasses" label="Take a photo with the glasses" tone="night" size={44} onPress={fromGlasses} />
+                    ) : null}
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={full ? 'Three photos taken' : `Take photo ${photos.length + 1} of ${MAX_PHOTOS}`}
+                    accessibilityState={{ disabled: !ready || full, busy: shooting }}
+                    onPress={takePhoto}
+                    disabled={!ready || full || shooting}
+                    hitSlop={8}
+                    style={({ pressed }) => [styles.shutterRing, (full || !ready) && { opacity: 0.4 }, pressed && { opacity: 0.8 }]}>
+                    {({ pressed }) => <View style={[styles.shutterCore, pressed && styles.shutterCorePressed]} />}
+                  </Pressable>
+                  <View style={styles.controlSide}>
+                    <IconButton
+                      name="arrow.triangle.2.circlepath.camera"
+                      label="Switch camera"
+                      tone="night"
+                      size={44}
+                      onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
+                    />
+                  </View>
+                </View>
               </>
             ) : (
               <View style={styles.cameraAsk}>
                 <Icon name="camera" size={32} color={Colors.nightText} weight="light" />
-                <Text style={styles.cameraAskText}>Recall needs the camera to take three photos of a face.</Text>
+                <Text style={styles.cameraAskText}>Remi needs the camera to take a few photos of a face.</Text>
                 {permission ? <Button title="Allow the camera" onPress={requestPermission} /> : null}
               </View>
             )}
@@ -291,7 +318,7 @@ export default function AddPersonScreen() {
                 <Pressable
                   key={photos[i]}
                   accessibilityRole="button"
-                  accessibilityLabel={`Photo ${i + 1}. Tap to retake.`}
+                  accessibilityLabel={`Photo ${i + 1}. Tap to remove and retake.`}
                   onPress={() => setPhotos((p) => p.filter((_, j) => j !== i))}
                   style={styles.thumbWrap}>
                   <Image source={{ uri: photos[i] }} style={styles.thumb} contentFit="cover" />
@@ -300,16 +327,16 @@ export default function AddPersonScreen() {
                   </View>
                 </Pressable>
               ) : (
-                <View key={`empty-${i}`} style={[styles.thumbWrap, styles.thumbEmpty]}>
+                <View key={`empty-${i}`} style={[styles.thumbWrap, styles.thumbEmpty, i === photos.length && styles.thumbNext]}>
                   <Text style={styles.thumbNum}>{i + 1}</Text>
                 </View>
               )
             )}
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.stripTitle}>
-                {photos.length >= MAX_PHOTOS ? 'Three photos ready' : `${photos.length} of ${MAX_PHOTOS} photos`}
+              <Text style={styles.stripTitle}>{full ? 'Three photos ready' : `${photos.length} of ${MAX_PHOTOS} photos`}</Text>
+              <Text style={styles.stripHint}>
+                {photos.length === 0 ? 'One is enough to start. Three from different angles works best.' : 'Tap a photo to remove it and retake.'}
               </Text>
-              <Text style={styles.stripHint}>Hold still, then turn a little between shots. Tap a photo to retake it.</Text>
             </View>
           </View>
 
@@ -368,20 +395,6 @@ export default function AddPersonScreen() {
             />
           ) : null}
 
-          <View style={styles.row}>
-            <Button
-              title={photos.length >= MAX_PHOTOS ? 'Photos taken' : photos.length ? 'Take the rest' : 'Take 3 photos'}
-              icon={photos.length >= MAX_PHOTOS ? 'checkmark' : 'camera.fill'}
-              onPress={burst}
-              loading={shooting}
-              disabled={!permission?.granted || !ready || photos.length >= MAX_PHOTOS}
-              style={{ flex: 1 }}
-            />
-            {glassesReady ? (
-              <Button title="From the glasses" icon="eyeglasses" variant="secondary" onPress={fromGlasses} disabled={photos.length >= MAX_PHOTOS} />
-            ) : null}
-          </View>
-
           <View style={styles.form}>
             <Field
               ref={nameRef}
@@ -436,22 +449,60 @@ export default function AddPersonScreen() {
 const styles = StyleSheet.create({
   scroll: { paddingHorizontal: Gutter, paddingBottom: Spacing.eight, gap: Spacing.four },
   cameraWrap: {
-    height: 280,
+    height: 420,
     borderRadius: Radii.lg,
     overflow: 'hidden',
     backgroundColor: Colors.night,
   },
+  flash: { backgroundColor: Colors.surface, opacity: 0.9 },
   guide: {
     position: 'absolute',
     alignSelf: 'center',
-    top: 36,
-    width: 164,
-    height: 208,
-    borderRadius: 100,
+    top: 64,
+    width: 176,
+    height: 224,
+    borderRadius: 120,
     borderWidth: 2,
     borderColor: 'rgba(245,243,238,0.55)',
   },
-  flip: { position: 'absolute', right: Spacing.three, top: Spacing.three },
+  hintPill: {
+    position: 'absolute',
+    top: Spacing.three,
+    alignSelf: 'center',
+    maxWidth: '86%',
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.two,
+    borderRadius: Radii.pill,
+    backgroundColor: 'rgba(21,18,31,0.62)',
+  },
+  hintText: { ...Type.secondaryBold, color: Colors.surface, textAlign: 'center' },
+  controls: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: Spacing.five,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.six,
+  },
+  controlSide: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  shutterRing: {
+    width: SHUTTER,
+    height: SHUTTER,
+    borderRadius: SHUTTER / 2,
+    borderWidth: 4,
+    borderColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shutterCore: {
+    width: SHUTTER - 16,
+    height: SHUTTER - 16,
+    borderRadius: (SHUTTER - 16) / 2,
+    backgroundColor: Colors.surface,
+  },
+  shutterCorePressed: { transform: [{ scale: 0.88 }] },
   cameraAsk: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.six, gap: Spacing.four },
   cameraAskText: { ...Type.body, color: Colors.nightText, textAlign: 'center' },
   strip: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
@@ -476,10 +527,10 @@ const styles = StyleSheet.create({
     borderColor: Colors.line,
     borderStyle: 'dashed',
   },
+  thumbNext: { borderColor: Colors.dusk, borderStyle: 'solid' },
   thumbNum: { fontFamily: Fonts.display, fontSize: 18, color: Colors.inkMute },
   stripTitle: { ...Type.secondaryBold, color: Colors.ink, marginLeft: Spacing.two },
   stripHint: { ...Type.caption, color: Colors.inkMute, marginLeft: Spacing.two },
-  row: { flexDirection: 'row', gap: Spacing.three },
   library: { gap: Spacing.three, paddingTop: Spacing.one },
   libraryTitle: { ...Type.secondaryBold, color: Colors.ink },
   libraryHint: { ...Type.caption, color: Colors.inkMute },

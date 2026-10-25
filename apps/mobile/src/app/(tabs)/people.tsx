@@ -74,7 +74,7 @@ export default function PeopleScreen() {
             <EmptyState
               icon="person.2"
               title="No one yet"
-              body={`Add the people ${who === 'you' ? 'you see' : `${who} sees`} most. Three photos and a name is all it takes.`}
+              body={`Add the people ${who === 'you' ? 'you see' : `${who} sees`} most. A photo and a name is all it takes.`}
               action={<Button title="Add a person" icon="plus" onPress={() => router.push('/add-person')} />}
             />
           ) : undefined
