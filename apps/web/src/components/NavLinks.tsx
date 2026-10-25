@@ -2,18 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarIcon, InsightsIcon, LiveIcon, MemoryIcon, PeopleIcon, SettingsIcon, ShieldIcon, SunriseIcon } from "./icons";
+import { CalendarIcon, InsightsIcon, LiveIcon, MemoryIcon, PeopleIcon, PillIcon, SettingsIcon, ShieldIcon, SunriseIcon } from "./icons";
 
 const PRIMARY = [
   { href: "/", label: "Today", Icon: SunriseIcon },
+  { href: "/live", label: "Live", Icon: LiveIcon },
   { href: "/people", label: "People", Icon: PeopleIcon },
-  { href: "/remember", label: "Remember", Icon: MemoryIcon },
   { href: "/reminders", label: "Reminders", Icon: CalendarIcon },
+  { href: "/medication", label: "Medication", Icon: PillIcon },
+  { href: "/remember", label: "Remember", Icon: MemoryIcon },
   { href: "/insights", label: "Insights", Icon: InsightsIcon },
 ] as const;
 
 const SECONDARY = [
-  { href: "/live", label: "Live view", Icon: LiveIcon },
   { href: "/privacy", label: "Privacy", Icon: ShieldIcon },
   { href: "/settings", label: "Settings", Icon: SettingsIcon },
 ] as const;
@@ -52,7 +53,8 @@ export function SideNav() {
 /** Phone-width tab bar: the same tabs as the mobile app. */
 export function TabBar() {
   const pathname = usePathname();
-  const tabs = [PRIMARY[0], PRIMARY[1], PRIMARY[2], PRIMARY[3], SECONDARY[2]];
+  // Phone width: the tools a caregiver reaches for most. Remember, Insights and Privacy live under Settings.
+  const tabs = [PRIMARY[0], PRIMARY[2], PRIMARY[3], PRIMARY[4], SECONDARY[1]];
   return (
     <nav
       aria-label="Main"

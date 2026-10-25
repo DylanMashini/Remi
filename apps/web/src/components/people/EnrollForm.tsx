@@ -185,7 +185,7 @@ export function EnrollForm({
           ) : null}
         </div>
         <span className="text-[15px] leading-snug text-ink-mute">
-          One to three clear photos, facing the camera, in good light. Photos stay private to your family and are only used to recognize this person.
+          One to three clear photos, facing the camera, in good light. They stay private to your family.
         </span>
       </fieldset>
 

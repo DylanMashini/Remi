@@ -41,6 +41,16 @@ Single source of truth for the web API (`apps/web`) and the Swift module
 | `POST /api/auth/reset` | `{token, password}` | `204`; one-time token, 30 min expiry; invalidates other sessions |
 | `GET /api/auth/verify?token=` | | redirects to `/?verified=1` (or `/?verified=0` if expired/used) |
 | `GET /api/auth/me` | | `200 {user, patient: {id, name}}` or `401`; phone uses it to check a saved token |
+| `POST /api/auth/join` | `{token, name, email, password}` | `201 {user}` + cookie; creates a CAREGIVER login on the inviting account's patient and marks the invite used. `410` when the link is expired or used, `409` when the email exists |
+
+Invites: a caregiver mints a link from Settings (`createInvite` server action → `Invite` row, token
+hashed, 7 days, single use) of the form `{APP_URL}/join?token=…`; `/join` shows who invited them and
+for whom, then posts to `/api/auth/join`. Settings also changes the password in place (`changePassword`:
+checks the current one, ends every other session) and removes another caregiver's login.
+
+Rate limits (in memory, per server process; `lib/ratelimit.ts`): login 20 per 10 min per IP and 10
+per account, signup 10 per 10 min, forgot 5 per 10 min, join 10 per 10 min. Over the limit returns
+`429 {error}` with `Retry-After`.
 
 Passwords: bcryptjs cost 12, min 8 chars. Tokens: `newToken()` / `hashToken()` from `@/lib/auth`.
 Public user shape everywhere: `{id, email, name, role: "CAREGIVER" | "WEARER", patientId, emailVerifiedAt, createdAt}`.
@@ -245,6 +255,19 @@ memories), `/people/[id]` (introduction editor, memories with "say this" toggles
 - `GET /api/events?since=<iso>&limit=` → `{events: [{id, type, text, personId, personName, data, createdAt}]}` newest first.
 - `DELETE /api/events/[id]` → `204`.
 - `POST /api/reminders` `{text, dueAt}` → `201 {reminder}`; `GET /api/reminders` → `{reminders}`; `DELETE /api/reminders/[id]`.
+  `Reminder` now also carries `medicationId` (null for a plain reminder), `takenAt` and
+  `skippedAt` (caregiver notes on a dose; a skipped dose has `firedAt` set too so it is never spoken).
+- **Medication** (web only; the phone needs nothing new). `Medication = {id, name, dose, instructions,
+  times: ["08:00", ...] (local clock times in APP_TIME_ZONE), active}`. `ensureDoses()` in
+  `lib/medications.ts` turns each active medication's times for today and tomorrow into Reminder
+  rows (unique on `medicationId + dueAt`; a time that already passed when the medication was added is
+  not created), with the text `It is time for your {name}, {dose}. {instructions}`. It runs on
+  `GET /api/reminders/due`, so the phone speaks doses exactly like reminders; `REMINDER`/`SPOKEN`
+  events for a dose carry `data.medicationId`. Editing or pausing a medication deletes its unspoken
+  future doses and rebuilds them. `GET /api/medications` → `{medications, today: [{medicationId,
+  reminderId, name, dose, time, dueAt, status, firedAt, takenAt}]}` with `status` one of `upcoming |
+  due | said | taken | skipped | missed-setup`. The context packet lists medications and today's dose
+  status so "did I take my pills?" is answered from the record, never guessed.
 - `GET /api/stream` → SSE (`text/event-stream`), one `event: event` per new Event row
   (`data:` = the event JSON as in `/api/events`), polling the DB every 1 s server-side, heartbeat
   comment every 15 s. Used by `/live` and the dashboard.

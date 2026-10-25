@@ -305,3 +305,11 @@ Evidence: `eval/face-models/RESULTS.md`.
   `Data()` (`Data(preroll)` / `append`) and iterate `startIndex..<endIndex` with `subdata(in:)`.
   Crash reports came off the phone with `idevicecrashreport -k <dir>` (brew libimobiledevice); the
   `.ips` is JSON after the first line.
+
+## Web dashboard pass (Oct 25, 12:30 to 2 AM)
+
+- Next 16.4 dev: after adding new `"use server"` exports to an existing actions file, calling the new action from a client component failed with `Cannot read properties of undefined (reading 'apply')` (the action logged as `ƒ createInvite() in 0ms` and never ran) until `next dev` was restarted. Same for a regenerated Prisma client (`prisma.medication` undefined): HMR reloads neither manifest.
+- Turbopack `next build` fails on a symlink inside the project that points outside it (`.cache -> ../../apps/web/.cache` in a worktree: "symlink target leaves the filesystem root"). Copy the folder instead.
+- The React Compiler lint (`react-hooks/set-state-in-effect`) flags `void loadEvents()` at the top of an effect even when `loadEvents` only sets state after `await fetch`. Kicking the loads off from `Promise.resolve().then(...)` satisfies it without changing behaviour. It also rejects reading `ref.current` during render (used to mark "fresh" rows); keep that in state.
+- Medication doses ride the existing reminder pipeline: `ensureDoses()` materializes Reminder rows per local time of day (unique on `medicationId + dueAt`) and `GET /api/reminders/due` calls it first, so the phone needed no change. Verified live: a 12:57 AM dose was returned by the poll route and the REMINDER and SPOKEN events landed on `/live` over SSE within two seconds.
+- Local clock times to UTC without a date library: format the guess in the zone with `Intl.DateTimeFormat(..., hourCycle: "h23")`, compute the offset, correct, repeat once for DST edges (`instantAt` in `lib/medications.ts`). Postgres `timestamp(3)` columns hold UTC; `AT TIME ZONE 'America/New_York'` in psql reinterprets them as local and misleads by the offset.

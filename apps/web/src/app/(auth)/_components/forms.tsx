@@ -166,6 +166,30 @@ export function SignupForm({ role }: { role: "caregiver" | "wearer" }) {
   );
 }
 
+/** Accepting a family invite: name, email, password; the account joins the inviter's patient. */
+export function JoinForm({ token, patientName }: { token: string; patientName: string }) {
+  const router = useRouter();
+  const { busy, error, onSubmit } = useSubmit(async (f) => {
+    const r = await post("/api/auth/join", { token, name: val(f, "name"), email: val(f, "email"), password: val(f, "password") });
+    if (!r.ok) return r.error!;
+    router.replace("/");
+    router.refresh();
+    return null;
+  });
+  return (
+    <form onSubmit={onSubmit} className="flex flex-col gap-5">
+      <FormStatus error={error} />
+      <Input id="name" label="Your name" autoComplete="name" autoFocus />
+      <Input id="email" label="Email" type="email" autoComplete="email" placeholder="you@example.com" />
+      <Input id="password" label="Password" type="password" autoComplete="new-password" minLength={8} hint="At least 8 characters." />
+      <Submit busy={busy}>Join {patientName.split(" ")[0]}&apos;s family</Submit>
+      <p className="m-0 text-[16px] text-ink-soft">
+        Already have a sign-in? <FooterLink href="/login">Sign in</FooterLink>
+      </p>
+    </form>
+  );
+}
+
 export function ForgotForm() {
   const [sent, setSent] = useState(false);
   const { busy, error, onSubmit } = useSubmit(async (f) => {

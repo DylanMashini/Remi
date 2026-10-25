@@ -1,7 +1,13 @@
 "use server";
 
+import bcrypt from "bcryptjs";
 import { refresh } from "next/cache";
+import { cookies, headers } from "next/headers";
 import { getCare } from "@/components/care";
+import { BCRYPT_COST, MIN_PASSWORD_LENGTH, SESSION_COOKIE, hashToken, newToken } from "@/lib/auth";
+import { appUrl } from "@/lib/email";
+import { INVITE_DAYS } from "@/lib/invites";
+import { dropFutureDoses, ensureDoses, isClockTime } from "@/lib/medications";
 import { cleanCallout, cleanMemoryText, distill } from "@/lib/memories";
 import { prisma } from "@/lib/prisma";
 
@@ -127,5 +133,136 @@ export async function updateMemoryCallout(memoryId: string, _prev: FormState, fo
 export async function deleteMemory(memoryId: string) {
   const { patientId } = await getCare();
   await prisma.memory.deleteMany({ where: { id: memoryId, patientId } });
+  refresh();
+}
+
+// ---------- Account ----------
+
+/** Changes the signed-in user's password after checking the current one; other sign-ins end. */
+export async function changePassword(_prev: FormState, formData: FormData): Promise<FormState> {
+  const { user } = await getCare();
+  const current = String(formData.get("current") ?? "");
+  const next = String(formData.get("next") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+  if (!current) return { error: "Enter your current password." };
+  if (next.length < MIN_PASSWORD_LENGTH) return { error: `The new password needs at least ${MIN_PASSWORD_LENGTH} characters.` };
+  if (next !== confirm) return { error: "The two new passwords do not match." };
+  if (!(await bcrypt.compare(current, user.passwordHash))) return { error: "That is not your current password." };
+  const passwordHash = await bcrypt.hash(next, BCRYPT_COST);
+  const mine = (await cookies()).get(SESSION_COOKIE)?.value;
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+    prisma.session.deleteMany({ where: { userId: user.id, ...(mine ? { tokenHash: { not: hashToken(mine) } } : {}) } }),
+  ]);
+  refresh();
+  return { ok: true };
+}
+
+export type InviteState = { error?: string; url?: string };
+
+/** Mints a one-week invite link that lets another family member join this account. */
+export async function createInvite(): Promise<InviteState> {
+  const { patientId, user } = await getCare();
+  const token = newToken();
+  await prisma.invite.create({
+    data: { patientId, createdById: user.id, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + INVITE_DAYS * 24 * 60 * 60 * 1000) },
+  });
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || /^\d/.test(host) ? "http" : "https");
+  refresh();
+  return { url: `${appUrl(`${proto}://${host}`)}/join?token=${encodeURIComponent(token)}` };
+}
+
+export async function revokeInvite(inviteId: string) {
+  const { patientId } = await getCare();
+  await prisma.invite.deleteMany({ where: { id: inviteId, patientId, usedAt: null } });
+  refresh();
+}
+
+/** Removes another family member's login from this account (never your own). */
+export async function removeFamilyMember(userId: string) {
+  const { patientId, user } = await getCare();
+  if (userId === user.id) return;
+  await prisma.user.deleteMany({ where: { id: userId, patientId } });
+  refresh();
+}
+
+// ---------- Medication ----------
+
+function readMedication(formData: FormData): { error?: string; name: string; dose: string | null; instructions: string | null; times: string[] } {
+  const clean = (k: string) => String(formData.get(k) ?? "").replace(/\s+/g, " ").trim();
+  const name = clean("name");
+  const dose = clean("dose");
+  const instructions = clean("instructions");
+  const times = [...new Set(formData.getAll("times").map(String).filter(isClockTime))].sort();
+  if (!name) return { error: "What is the medication called?", name, dose, instructions, times };
+  if (name.length > 80 || dose.length > 80) return { error: "Keep the name and dose short.", name, dose, instructions, times };
+  if (instructions.length > 200) return { error: "Keep the instructions to one sentence.", name, dose, instructions, times };
+  if (times.length === 0) return { error: "Pick at least one time of day.", name, dose, instructions, times };
+  if (times.length > 6) return { error: "Six times a day is the most Remi will say.", name, dose, instructions, times };
+  return { name, dose: dose || null, instructions: instructions || null, times };
+}
+
+export async function addMedication(_prev: FormState, formData: FormData): Promise<FormState> {
+  const { patientId, user } = await getCare();
+  const m = readMedication(formData);
+  if (m.error) return { error: m.error };
+  await prisma.medication.create({
+    data: { patientId, name: m.name, dose: m.dose, instructions: m.instructions, times: m.times, createdById: user.id },
+  });
+  await ensureDoses(patientId);
+  refresh();
+  return { ok: true };
+}
+
+export async function updateMedication(medicationId: string, _prev: FormState, formData: FormData): Promise<FormState> {
+  const { patientId } = await getCare();
+  const m = readMedication(formData);
+  if (m.error) return { error: m.error };
+  const { count } = await prisma.medication.updateMany({
+    where: { id: medicationId, patientId },
+    data: { name: m.name, dose: m.dose, instructions: m.instructions, times: m.times },
+  });
+  if (count === 0) return { error: "This medication was removed." };
+  await dropFutureDoses(medicationId);
+  await ensureDoses(patientId);
+  refresh();
+  return { ok: true };
+}
+
+/** Pausing keeps the medication on the list but Remi stops saying its doses. */
+export async function setMedicationActive(medicationId: string, active: boolean) {
+  const { patientId } = await getCare();
+  await prisma.medication.updateMany({ where: { id: medicationId, patientId }, data: { active } });
+  await dropFutureDoses(medicationId);
+  if (active) await ensureDoses(patientId);
+  refresh();
+}
+
+export async function deleteMedication(medicationId: string) {
+  const { patientId } = await getCare();
+  await prisma.medication.deleteMany({ where: { id: medicationId, patientId } });
+  refresh();
+}
+
+/** A caregiver notes that a dose was taken (or undoes that). */
+export async function setDoseTaken(reminderId: string, taken: boolean) {
+  const { patientId } = await getCare();
+  await prisma.reminder.updateMany({
+    where: { id: reminderId, patientId, medicationId: { not: null } },
+    data: taken ? { takenAt: new Date(), skippedAt: null } : { takenAt: null },
+  });
+  refresh();
+}
+
+/** Skip one dose: it is marked fired so the phone never speaks it, and shown as skipped. */
+export async function skipDose(reminderId: string) {
+  const { patientId } = await getCare();
+  const now = new Date();
+  await prisma.reminder.updateMany({
+    where: { id: reminderId, patientId, medicationId: { not: null }, firedAt: null },
+    data: { firedAt: now, skippedAt: now },
+  });
   refresh();
 }

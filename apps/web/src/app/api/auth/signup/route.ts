@@ -12,11 +12,14 @@ import {
 } from "@/lib/auth";
 import { appUrl, sendVerifyEmail } from "@/lib/email";
 import { Prisma, type UserRole } from "@/generated/prisma/client";
+import { clientIp, rateLimit, tooMany } from "@/lib/ratelimit";
 import { VERIFY_TOKEN_HOURS, createAuthToken, jsonError, readJson, requestOrigin, str } from "../_shared";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: Request) {
+  const wait = rateLimit(`signup:${clientIp(req)}`, 10, 10 * 60_000);
+  if (wait) return tooMany(wait);
   const body = await readJson(req);
   if (!body) return jsonError("Send a JSON body.", 400);
 

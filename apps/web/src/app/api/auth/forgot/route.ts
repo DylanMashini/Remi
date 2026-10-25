@@ -1,10 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { normalizeEmail } from "@/lib/auth";
 import { appUrl, sendResetEmail } from "@/lib/email";
+import { clientIp, rateLimit, tooMany } from "@/lib/ratelimit";
 import { RESET_TOKEN_MINUTES, createAuthToken, readJson, requestOrigin } from "../_shared";
 
 /** Always 204, whether or not the account exists (no account enumeration). */
 export async function POST(req: Request) {
+  const wait = rateLimit(`forgot:${clientIp(req)}`, 5, 10 * 60_000);
+  if (wait) return tooMany(wait);
   const body = await readJson(req);
   const email = normalizeEmail(body?.email);
   if (email) {

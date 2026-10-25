@@ -59,7 +59,8 @@ changing it; there is no URL field in the app. First launch walks through onboar
 glasses, then create an account) or sign-in. On the Live tab, "No glasses here? Use the phone camera"
 runs the same pipeline on Mock Device Kit.
 
-Caregiver dashboard: `http://<host>:3000/` (Overview, People, Reminders) and `/live` for the projector.
+Caregiver dashboard: `http://<host>:3000/` (Today, People, Reminders, Medication, Remember, Insights,
+Settings with family invites) and `/live` for the projector (press F for full screen).
 
 ### Keys (`apps/web/.env`)
 

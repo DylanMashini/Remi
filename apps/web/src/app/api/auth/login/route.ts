@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, createSession, normalizeEmail, sessionCookieOptions, toPublicUser } from "@/lib/auth";
+import { clientIp, rateLimit, tooMany } from "@/lib/ratelimit";
 import { jsonError, readJson } from "../_shared";
 
 // Compared against when the email is unknown, so response time does not reveal which emails exist.
@@ -17,6 +18,10 @@ export async function POST(req: Request) {
   const email = normalizeEmail(body.email);
   const password = typeof body.password === "string" ? body.password : "";
   if (!email || !password) return jsonError("Enter your email and password.", 400);
+
+  // 20 attempts per 10 minutes per address, 10 per account: slows guessing, never locks a family out for long.
+  const wait = Math.max(rateLimit(`login:${clientIp(req)}`, 20, 10 * 60_000), rateLimit(`login:${email}`, 10, 10 * 60_000));
+  if (wait) return tooMany(wait);
 
   const user = await prisma.user.findUnique({ where: { email } });
   const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);

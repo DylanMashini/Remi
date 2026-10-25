@@ -14,6 +14,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Everything except API, auth pages, Next internals, and files with an extension.
-    "/((?!api/|api$|login|signup|forgot|reset|_next/|.*\\.[^/]+$).*)",
+    "/((?!api/|api$|login|signup|forgot|reset|join|_next/|.*\\.[^/]+$).*)",
   ],
 };

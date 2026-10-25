@@ -51,6 +51,7 @@ export function hourOf(now: Date): number {
 /** "Good morning" / "Good afternoon" / "Good evening" in the demo time zone. */
 export function greeting(now: Date): string {
   const h = hourOf(now);
+  if (h < 4) return "Good evening";
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   return "Good evening";

@@ -1,3 +1,5 @@
+import { describeTimes } from "@/lib/medication-text";
+import { ensureDoses, todaysDoses } from "@/lib/medications";
 import { prisma } from "@/lib/prisma";
 
 /** Builds the context packet sent to Claude on every ask (see CONTRACT.md). */
@@ -107,6 +109,33 @@ export async function buildContext(patientId: string): Promise<string> {
   lines.push("", "Reminders already given in the last 3 hours:");
   if (recent.length === 0) lines.push("- none");
   for (const r of recent) if (r.firedAt) lines.push(`- ${fmtTime(r.firedAt)}: ${r.text}`);
+
+  // Medication: the schedule and how today went, so "did I take my pills?" has a true answer.
+  await ensureDoses(patientId, now);
+  const doses = await todaysDoses(patientId, now);
+  const meds = new Map<string, { name: string; dose: string | null; times: string[] }>();
+  for (const d of doses) meds.set(d.medication.id, { name: d.medication.name, dose: d.medication.dose, times: d.medication.times });
+  lines.push("", "Medication (set by the family; if asked whether a dose was taken, answer from the status below and never guess):");
+  if (meds.size === 0) lines.push("- none");
+  for (const m of meds.values()) lines.push(`- ${m.name}${m.dose ? `, ${m.dose}` : ""}: ${describeTimes(m.times)}`);
+  if (doses.length) {
+    lines.push("Today's doses:");
+    for (const d of doses) {
+      const status =
+        d.status === "taken"
+          ? `taken (noted by family at ${fmtTime(d.reminder!.takenAt!)})`
+          : d.status === "said"
+            ? `reminder was spoken at ${fmtTime(d.reminder!.firedAt!)}, not yet marked taken`
+            : d.status === "skipped"
+              ? "skipped by the family"
+              : d.status === "due"
+                ? "due now"
+                : d.status === "upcoming"
+                  ? "coming up"
+                  : "added after its time, not spoken today";
+      lines.push(`- ${fmtTime(d.dueAt)} ${d.medication.name}: ${status}`);
+    }
+  }
 
   return lines.join("\n");
 }

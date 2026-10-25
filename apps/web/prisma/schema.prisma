@@ -14,12 +14,14 @@ model Patient {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  caregivers User[]
-  people     Person[]
-  files      File[]
-  events     Event[]
-  reminders  Reminder[]
-  memories   Memory[]
+  caregivers  User[]
+  people      Person[]
+  files       File[]
+  events      Event[]
+  reminders   Reminder[]
+  memories    Memory[]
+  medications Medication[]
+  invites     Invite[]
 }
 
 enum UserRole {
@@ -39,11 +41,31 @@ model User {
   patientId       String
   createdAt       DateTime  @default(now())
 
-  patient    Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  sessions   Session[]
-  authTokens AuthToken[]
-  reminders  Reminder[]
-  memories   Memory[]
+  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  sessions    Session[]
+  authTokens  AuthToken[]
+  reminders   Reminder[]
+  memories    Memory[]
+  medications Medication[]
+  invites     Invite[]
+
+  @@index([patientId])
+}
+
+/// A link that lets another family member create a login on the same patient. Only the
+/// SHA-256 of the token is stored; the raw token is in the link the caregiver shares.
+model Invite {
+  id          String    @id @default(cuid())
+  patientId   String
+  tokenHash   String    @unique
+  createdById String?
+  expiresAt   DateTime
+  usedAt      DateTime?
+  usedByEmail String?
+  createdAt   DateTime  @default(now())
+
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([patientId])
 }
@@ -187,17 +209,47 @@ model Event {
   @@index([patientId, createdAt])
 }
 
+/// One spoken reminder. Medication doses are reminders too (`medicationId` set), materialized
+/// from the medication's times by `lib/medications.ts`, so the phone pipeline is unchanged.
 model Reminder {
-  id          String    @id @default(cuid())
-  patientId   String
-  text        String
-  dueAt       DateTime
-  firedAt     DateTime?
-  createdById String?
-  createdAt   DateTime  @default(now())
+  id           String    @id @default(cuid())
+  patientId    String
+  text         String
+  dueAt        DateTime
+  firedAt      DateTime?
+  /// Set by a caregiver when a dose was skipped on purpose; `firedAt` is set too so it is never spoken.
+  skippedAt    DateTime?
+  /// Set by a caregiver once the dose was taken.
+  takenAt      DateTime?
+  medicationId String?
+  createdById  String?
+  createdAt    DateTime  @default(now())
 
-  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  patient    Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdBy  User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  medication Medication? @relation(fields: [medicationId], references: [id], onDelete: Cascade)
 
+  @@unique([medicationId, dueAt])
   @@index([patientId, dueAt])
+}
+
+/// A medication the family schedules. `times` are local clock times ("08:00") in the app time
+/// zone; each becomes a Reminder for the day.
+model Medication {
+  id           String   @id @default(cuid())
+  patientId    String
+  name         String
+  dose         String?
+  instructions String?
+  times        String[]
+  active       Boolean  @default(true)
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdBy User?      @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  reminders Reminder[]
+
+  @@index([patientId])
 }

@@ -32,8 +32,8 @@ async function People() {
         title="People"
         lead={
           people.length
-            ? `Remi recognizes ${people.length === 1 ? "one person" : `these ${people.length} people`}, and no one else. Open someone to change what Remi says about them.`
-            : `The people ${who === "you" ? "you see" : `${patientName} sees`} most. Remi only recognizes who is on this list.`
+            ? `${people.length === 1 ? "One person" : `${people.length} people`} Remi knows by sight. Open someone to change what Remi says about them.`
+            : `The people ${who === "you" ? "you see" : `${patientName} sees`} most. Remi recognizes only who is on this list.`
         }
       >
         <Link href="/people/new" className={buttonPrimary}>
