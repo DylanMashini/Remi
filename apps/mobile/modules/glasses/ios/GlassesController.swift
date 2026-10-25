@@ -24,7 +24,12 @@ final class GlassesController {
   /// Every path that changes this (stopStream, stream state, session .stopped on disconnect) keeps
   /// the library indexer in sync: it yields the CPU to recognition while a stream runs.
   private(set) var streaming = false {
-    didSet { if streaming != oldValue { PhotoIndex.shared.setStreaming(streaming) } }
+    didSet {
+      if streaming != oldValue {
+        PhotoIndex.shared.setStreaming(streaming)
+        updateWakeActive()
+      }
+    }
   }
   private(set) var mock = false
   private var audioRoute = "other"
@@ -93,6 +98,9 @@ final class GlassesController {
     }
     speaker.onError = { [weak self] msg in
       Task { @MainActor in self?.emitError(msg) }
+    }
+    speaker.onSpeakingChanged = { [weak self] on in
+      Task { @MainActor in self?.wake?.setMuted(on) }
     }
     speaker.configureSession()
 
@@ -234,6 +242,7 @@ final class GlassesController {
       "mock": mock,
       "rosterPeople": roster.people,
       "rosterSamples": roster.samples,
+      "wakeWord": wakeEnabled,
     ]
   }
 
@@ -728,7 +737,9 @@ final class GlassesController {
   /// Starts a live conversation: asks the server for a client secret, opens the WebSocket to OpenAI
   /// from the phone, and streams the mic (glasses in-band audio, or the phone's) until `stopChat`,
   /// a long silence, or a connection failure. Returns the session details for the screen.
-  func startChat() async throws -> [String: Any] {
+  /// `trigger` is "phone" (the Ask Remi button) or "wake" ("Hey Remi" heard: the pre-roll audio is
+  /// handed to the conversation and the greeting is skipped).
+  func startChat(trigger: String = "phone") async throws -> [String: Any] {
     setup()
     if let old = chat {
       old.stop(reason: "restarted")
@@ -736,8 +747,7 @@ final class GlassesController {
     }
     guard !audio.isAsking else { throw GlassesError("A question is being recorded; finish it first") }
 
-    let req = try BackendClient.shared.request("/api/realtime/session", method: "POST", contentType: "application/json", body: Data("{}".utf8), timeout: 20)
-    let obj = try await BackendClient.shared.sendJSON(req)
+    let obj = try await chatSession()
     guard let urlStr = obj["url"] as? String, let url = URL(string: urlStr),
           let secret = obj["clientSecret"] as? String, !secret.isEmpty else {
       throw GlassesError("The conversation token was incomplete")
@@ -781,18 +791,20 @@ final class GlassesController {
     audio.onChatAudio = { [weak c] pcm in
       Task { @MainActor in c?.feed(pcm24k: pcm) }
     }
-    try audio.startChat()
+    let preroll = try audio.startChat()
+    if trigger == "wake" { c.preroll = preroll }
     chat = c
+    updateWakeActive()
     do {
       try c.start()
     } catch {
       chatEnded(c)
       throw error
     }
-    NSLog("[Glasses] chat \(sessionId): mic via \(audio.source), route \(speaker.route)")
+    NSLog("[Glasses] chat \(sessionId) (\(trigger)): mic via \(audio.source), route \(speaker.route)")
     var td: [String: Any] = [:]
     if let t = obj["turnDetection"] as? [String: Any] { td = t }
-    return [
+    let result: [String: Any] = [
       "sessionId": sessionId,
       "model": model,
       "voice": obj["voice"] as? String ?? "",
@@ -800,7 +812,121 @@ final class GlassesController {
       "turnDetection": td["type"] as? String ?? "",
       "silenceMs": td["silence_duration_ms"] as? Int ?? 0,
       "micSource": audio.source,
+      "trigger": trigger,
     ]
+    // JS did not call startChat, so it learns about this session from an event.
+    if trigger != "phone" { emit("onChat", result.merging(["kind": "started"]) { _, new in new }) }
+    return result
+  }
+
+  // MARK: Chat session (client secret)
+
+  /// The secret lives 10 min; a prefetched one older than this is thrown away.
+  private static let chatSecretFresh: TimeInterval = 8 * 60
+  private var prefetchedChat: (obj: [String: Any], at: Date)?
+  private var prefetchTask: Task<Void, Never>?
+
+  private func chatSession() async throws -> [String: Any] {
+    if let p = prefetchedChat {
+      prefetchedChat = nil
+      if Date().timeIntervalSince(p.at) < Self.chatSecretFresh { return p.obj }
+      NSLog("[Glasses] prefetched chat secret stale; fetching a fresh one")
+    }
+    return try await Self.fetchChatSession()
+  }
+
+  private nonisolated static func fetchChatSession() async throws -> [String: Any] {
+    let req = try BackendClient.shared.request("/api/realtime/session", method: "POST", contentType: "application/json", body: Data("{}".utf8), timeout: 20)
+    return try await BackendClient.shared.sendJSON(req)
+  }
+
+  /// With "Hey Remi" on, keep a client secret ready so the conversation opens as soon as the phrase
+  /// is heard (the fetch is ~0.5 to 1 s). Renewed before it goes stale and after each use.
+  private func prefetchChatSession() {
+    guard wakeEnabled, prefetchedChat == nil, chat == nil, prefetchTask == nil else { return }
+    prefetchTask = Task { @MainActor [weak self] in
+      defer { self?.prefetchTask = nil }
+      do {
+        let obj = try await Self.fetchChatSession()
+        guard let self, self.wakeEnabled else { return }
+        self.prefetchedChat = (obj, Date())
+        // Renew just before the secret expires.
+        Task { @MainActor [weak self] in
+          try? await Task.sleep(nanoseconds: UInt64(Self.chatSecretFresh * 1_000_000_000))
+          guard let self, let p = self.prefetchedChat, Date().timeIntervalSince(p.at) >= Self.chatSecretFresh else { return }
+          self.prefetchedChat = nil
+          self.prefetchChatSession()
+        }
+      } catch {
+        NSLog("[Glasses] chat secret prefetch failed: \(error.localizedDescription)")
+      }
+    }
+  }
+
+  // MARK: Wake word ("Hey Remi")
+
+  private var wake: WakeWord?
+  private(set) var wakeEnabled = false
+  private var wakeStarting = false
+  private var lastChatEndedAt: Date?
+  /// After a conversation ends, ignore the phrase for this long: Remi's farewell is still in the air.
+  private static let wakeCooldown: TimeInterval = 5
+
+  /// Turns "Hey Remi" on or off. Off by default; the Ask Remi button and the glasses button stay the
+  /// primary way to ask. Loading the model (~5 MB int8) happens once, off the main thread.
+  func setWakeWord(_ on: Bool) async throws -> [String: Any] {
+    setup()
+    if on {
+      if wake == nil {
+        let w = try await Task.detached { try WakeWord() }.value
+        w.log = { msg in NSLog("[Glasses] \(msg)") }
+        w.onDetected = { [weak self] keyword in
+          Task { @MainActor in self?.wakeHeard(keyword) }
+        }
+        wake = w
+      }
+      guard let w = wake else { throw GlassesError("Wake word unavailable") }
+      wakeEnabled = true
+      audio.onWakeAudio = { [weak w] pcm in w?.feed(pcm16: pcm) }
+      audio.setWake(true)
+      updateWakeActive()
+      prefetchChatSession()
+      NSLog("[Glasses] wake word on (threshold \(WakeWord.threshold)); listening while streaming")
+    } else {
+      wakeEnabled = false
+      audio.setWake(false)
+      audio.onWakeAudio = nil
+      wake?.setActive(false)
+      prefetchedChat = nil
+      NSLog("[Glasses] wake word off")
+    }
+    emitStatus()
+    return ["enabled": wakeEnabled, "phrase": "Hey Remi"]
+  }
+
+  /// The detector only scores audio while a stream runs and nothing else owns the mic.
+  private func updateWakeActive() {
+    wake?.setActive(wakeEnabled && streaming && chat == nil)
+  }
+
+  private func wakeHeard(_ keyword: String) {
+    guard wakeEnabled, streaming, chat == nil, !wakeStarting, !audio.isAsking else { return }
+    if let t = lastChatEndedAt, Date().timeIntervalSince(t) < Self.wakeCooldown {
+      NSLog("[Glasses] wake word ignored (cooldown after the last conversation)")
+      return
+    }
+    wakeStarting = true
+    NSLog("[Glasses] Hey Remi heard via \(audio.source); starting a conversation")
+    emit("onWake", ["keyword": keyword, "source": audio.source])
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer { self.wakeStarting = false }
+      do {
+        _ = try await self.startChat(trigger: "wake")
+      } catch {
+        self.emitError("Heard \"Hey Remi\", but the conversation could not start: \(error.localizedDescription)")
+      }
+    }
   }
 
   /// Ends the conversation (user tapped End). Safe when none is running.
@@ -817,6 +943,9 @@ final class GlassesController {
     chat = nil
     audio.onChatAudio = nil
     audio.stopChat()
+    lastChatEndedAt = Date()
+    updateWakeActive()
+    prefetchChatSession()
   }
 
   /// Posts one finished turn to the memory log (QUESTION / ANSWER / SPOKEN). Fire and forget.

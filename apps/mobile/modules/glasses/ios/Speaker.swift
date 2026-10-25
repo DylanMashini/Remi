@@ -19,6 +19,9 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
   var onRoute: ((String, String) -> Void)?   // (route, portName)
   var onSpoken: ((String, String, Float) -> Void)?  // (text, route, pan)
   var onError: ((String) -> Void)?
+  /// Fires when a line starts playing and when the queue goes idle. The wake word listener mutes
+  /// itself while Remi talks so Remi's own voice ("Hey Remi" is never in a line, but why risk it) is not heard.
+  var onSpeakingChanged: ((Bool) -> Void)?
 
   /// Set by AudioCapture while it needs the mic (play-and-record); otherwise playback-only.
   var recordingActive = false {
@@ -216,6 +219,7 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     guard current == nil, !queue.isEmpty else { return }
     let line = queue.removeFirst()
     current = line
+    onSpeakingChanged?(true)
     configureSession()
     let route = checkRoute()
     if route != "a2dp" { NSLog("[Glasses] WARNING speaking over \(route), not glasses A2DP") }
@@ -281,6 +285,7 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     NSLog("[Glasses] spoke over \(route) (\(Self.panLabel(line.pan))): \(line.text)")
     onSpoken?(line.text, route, line.pan)
     line.completion?(route)
+    if queue.isEmpty { onSpeakingChanged?(false) }
     playNextIfIdle()
   }
 

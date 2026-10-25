@@ -12,6 +12,18 @@ unless dat_frameworks.all? { |f| File.exist?(File.join(dat_dir, "#{f}.xcframewor
   raise "[Glasses] Failed to fetch Meta Wearables DAT #{DAT_VERSION}" unless ok
 end
 
+# "Hey Remi" wake word (WakeWord.swift): sherpa-onnx keyword spotter + onnxruntime as static
+# xcframeworks, and the KWS model in Models/wake. Fetched on demand, gitignored, Apache 2.0.
+SHERPA_VERSION = '1.13.8'
+sherpa_frameworks = %w[SherpaOnnxC onnxruntime]
+wake_dir = File.join(__dir__, 'Models', 'wake')
+unless sherpa_frameworks.all? { |f| File.exist?(File.join(dat_dir, "#{f}.xcframework")) } &&
+       File.exist?(File.join(wake_dir, 'VERSION')) &&
+       File.read(File.join(wake_dir, 'VERSION')).strip == SHERPA_VERSION
+  ok = system('sh', File.join(__dir__, 'scripts', 'fetch-sherpa.sh'), SHERPA_VERSION)
+  raise "[Glasses] Failed to fetch sherpa-onnx #{SHERPA_VERSION}" unless ok
+end
+
 Pod::Spec.new do |s|
   s.name           = 'Glasses'
   s.version        = '0.1.0'
@@ -26,12 +38,18 @@ Pod::Spec.new do |s|
   s.swift_version  = '5.9'
 
   s.dependency 'ExpoModulesCore'
-  s.vendored_frameworks = dat_frameworks.map { |f| "Frameworks/#{f}.xcframework" }
+  s.vendored_frameworks = (dat_frameworks + sherpa_frameworks).map { |f| "Frameworks/#{f}.xcframework" }
   s.frameworks = 'AVFoundation', 'Speech', 'Security', 'Vision', 'CoreML', 'Accelerate'
+  # sherpa-onnx and onnxruntime are C++ static libraries.
+  s.libraries = 'c++'
 
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.source_files = '*.{h,m,mm,swift}'
   # Precompiled Core ML face embedder (scripts/README.md). Shipped compiled because CocoaPods'
   # resource copy step does not run coremlcompiler on .mlpackage files.
-  s.resource_bundles = { 'GlassesModels' => ['Models/FaceEmbedder.mlmodelc'] }
+  s.resource_bundles = {
+    'GlassesModels' => ['Models/FaceEmbedder.mlmodelc'],
+    # Wake word model files (int8 onnx + tokens), loaded by path at runtime.
+    'GlassesWake' => ['Models/wake/*.onnx', 'Models/wake/tokens.txt'],
+  }
 end

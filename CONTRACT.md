@@ -277,10 +277,19 @@ startAsk(): Promise<void>                    // begins mic capture; notes the fr
 stopAsk(): Promise<{ question: string; answer: string; sawFrame: boolean }>
   // multipart to /api/ask: the audio plus the newest glasses frame (≤ 5 s old, downscaled to
   // 768 px, JPEG 0.75; falls back to the frame noted at startAsk), speaks the answer
-startChat(): Promise<{ sessionId; model; voice; bargeIn; turnDetection; silenceMs; micSource }>
+startChat(): Promise<{ sessionId; model; voice; bargeIn; turnDetection; silenceMs; micSource; trigger }>
   // live conversation (above): mic → OpenAI directly, automatic turns, answers in the model's voice.
   // Progress arrives as onChat events; ends on stopChat, 90 s of silence, or a dropped connection.
+  // trigger: "phone" (this call) or "wake" ("Hey Remi" heard; see setWakeWord).
 stopChat(): Promise<{ ended: boolean; turns: number }>
+setWakeWord(on: boolean): Promise<{ enabled: boolean; phrase: "Hey Remi" }>
+  // "Hey Remi" (WakeWord.swift): sherpa-onnx open-vocabulary keyword spotter on the phone, fed the
+  // same 16 kHz mic audio as ambient transcription, only while a stream runs and no conversation or
+  // ask owns the mic. Nothing leaves the phone until the phrase is heard. Off by default; survives
+  // stream stop/start. On a hit: onWake, then startChat(trigger "wake") with the last 3 s of audio
+  // (so "Hey Remi, who is this?" said in one breath is heard whole), no greeting, and audio said
+  // while the socket opens is held rather than dropped. Muted while Remi speaks; 5 s cooldown after
+  // a conversation ends. The client secret is prefetched while wake is on so the chat opens faster.
 startListening(): Promise<void>              // begins mic capture for a Remember memory
 stopListening(): Promise<{ text: string }>   // uploads to /api/transcribe, returns the words (nothing spoken)
 speak(speechId: string, text: string): Promise<void>      // downloads /api/speech/id, plays over A2DP
@@ -322,6 +331,7 @@ type GlassesStatus = {
   mock: boolean;
   rosterPeople: number;        // on-device roster size (people, embedded photos)
   rosterSamples: number;
+  wakeWord: boolean;           // "Hey Remi" listening is on (setWakeWord)
 };
 
 Events:
@@ -335,6 +345,8 @@ onPhotoIndex(status: PhotoIndexStatus)        // at most every 500 ms while inde
 onChat(ev)  // { kind: "state", state: "connecting"|"listening"|"hearing"|"thinking"|"speaking"|"ended", reason?, sessionId }
             // | { kind: "transcript", role: "user"|"assistant", text, final, sessionId }   (text = the turn so far)
             // | { kind: "turn", question, answer, frame, route, sessionId }                 (also posted to /api/realtime/turns)
+            // | { kind: "started", ...startChat result }   (a conversation JS did not start: trigger "wake")
+onWake({ keyword: "HEY_REMI"; source: "glasses-inband" | "phone-mic" })  // heard; a conversation is starting
 
 View: <GlassesPreview style={...} />           // renders latest frame natively
 ```

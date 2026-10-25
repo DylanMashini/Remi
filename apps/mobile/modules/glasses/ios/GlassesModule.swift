@@ -23,7 +23,7 @@ public final class GlassesModule: Module {
   public func definition() -> ModuleDefinition {
     Name("Glasses")
 
-    Events("onStatus", "onFrameResult", "onAudioRoute", "onSpoken", "onError", "onPhotoIndex", "onButton", "onChat")
+    Events("onStatus", "onFrameResult", "onAudioRoute", "onSpoken", "onError", "onPhotoIndex", "onButton", "onChat", "onWake")
 
     OnCreate {
       let module = self
@@ -83,6 +83,11 @@ public final class GlassesModule: Module {
 
     AsyncFunction("stopChat") { () async -> [String: Any] in
       await GlassesController.shared.stopChat()
+    }
+
+    // "Hey Remi" on the phone (sherpa-onnx, no network). Off by default; a heard phrase starts a chat.
+    AsyncFunction("setWakeWord") { (on: Bool) async throws -> [String: Any] in
+      try await GlassesController.shared.setWakeWord(on)
     }
 
     AsyncFunction("startListening") { () async throws in

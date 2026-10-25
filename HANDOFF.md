@@ -76,6 +76,7 @@ Seed (`pnpm --filter web db:seed`): patient "Ruth", login **demo@recall.local / 
   - `GlassesModule.swift` (the JS API), `GlassesController.swift` (DAT registration, session, stream, mock).
   - `FaceRecognizer.swift` (Vision detection + Core ML embedding), `LocalRecognition.swift` (roster, matching, debounce, posts decisions), `FaceSelfTest.swift` (DEBUG agreement check), `Models/FaceEmbedder.mlmodelc`, `BackendClient.swift`.
   - `Speaker.swift` (A2DP route check, queued playback, Apple speech fallback), `AudioCapture.swift` (glasses in-band audio, falling back to the phone mic after 4 s).
+  - `WakeWord.swift` ("Hey Remi" on the phone: sherpa-onnx keyword spotter fed by AudioCapture; off by default, toggled from the Live screen; see NOTES.md). Its frameworks and model are fetched by `ios/scripts/fetch-sherpa.sh` during `pod install`.
   - `GlassesPreviewView.swift`, `GlassesAppDelegateSubscriber.swift` (the `memoryaid://` callback from Meta AI).
   - The DAT SDK 1.0.1 frameworks (Core, Camera, MockDevice) are downloaded by `ios/scripts/fetch-dat.sh` during `pod install`. They are gitignored and are not an SPM dependency.
 - `apps/mobile/src/`:
@@ -112,11 +113,13 @@ cd apps/mobile && npx expo start --dev-client --tunnel ngrok   # Metro via @expo
 - **Certificate fix:** the certificate showed as invalid until Apple's **WWDR G3 intermediate** was added to the login keychain. That's done now.
 - **`expo run:ios --device` fails:** it can't create a provisioning profile. Build and install manually instead:
   ```sh
-  cd apps/mobile && xcodebuild -workspace ios/MemoryAid.xcworkspace -scheme MemoryAid -configuration Debug \
+  cd apps/mobile && xcodebuild -workspace ios/Remi.xcworkspace -scheme Remi -configuration Debug \
     -destination 'id=00008130-0014595A1A92001C' -derivedDataPath ios/build \
     -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
-  xcrun devicectl device install app --device 00008130-0014595A1A92001C ios/build/Build/Products/Debug-iphoneos/MemoryAid.app
+  xcrun devicectl device install app --device 00008130-0014595A1A92001C ios/build/Build/Products/Debug-iphoneos/Remi.app
   ```
+  (The workspace/scheme/app were `MemoryAid` before the rename to Remi.) A `-configuration Release`
+  build embeds the JS bundle and needs no Metro; it lands in `Release-iphoneos/Remi.app`.
 - **When to rebuild:** native changes need `pnpm prebuild` (`CI=1` for non-interactive) and then the rebuild above. JS-only changes hot-reload through Metro.
 
 ## Keys (`apps/web/.env`; placeholders in `.env.example`)

@@ -18,6 +18,8 @@ export type GlassesStatus = {
   /** On-device roster size (people, embedded photos). Older builds omit it. */
   rosterPeople?: number;
   rosterSamples?: number;
+  /** "Hey Remi" listening is on. Older builds omit it. */
+  wakeWord?: boolean;
 };
 
 export type Face = {
@@ -63,10 +65,13 @@ export type ChatStartResult = {
   turnDetection: string;
   silenceMs: number;
   micSource: string;
+  /** "phone" (Ask Remi button) or "wake" ("Hey Remi" heard). Older builds omit it. */
+  trigger?: string;
 };
 
 export type ChatEvent =
   | { kind: 'state'; state: ChatState; reason?: string | null; sessionId: string }
+  | ({ kind: 'started' } & ChatStartResult)
   | { kind: 'transcript'; role: 'user' | 'assistant'; text: string; final: boolean; sessionId: string }
   | { kind: 'turn'; question: string; answer: string; frame: boolean; route: string; sessionId: string };
 
@@ -91,6 +96,8 @@ type Events = {
   onButton: { button: 'capture' | 'action' };
   /** Live conversation progress. */
   onChat: ChatEvent;
+  /** "Hey Remi" was heard on the phone; a conversation is starting. */
+  onWake: { keyword: string; source: string };
 };
 
 type Subscription = { remove: () => void };
@@ -107,6 +114,7 @@ type NativeGlasses = {
   stopAsk?: () => Promise<{ question: string; answer: string; sawFrame?: boolean }>;
   startChat?: () => Promise<ChatStartResult>;
   stopChat?: () => Promise<{ ended: boolean; turns: number }>;
+  setWakeWord?: (on: boolean) => Promise<{ enabled: boolean; phrase: string }>;
   startListening?: () => Promise<void>;
   stopListening?: () => Promise<{ text: string }>;
   speak?: (speechId: string, text: string) => Promise<void>;
@@ -175,6 +183,12 @@ export const Glasses = {
    */
   startChat: () => call('startChat')(),
   stopChat: () => call('stopChat')(),
+  /**
+   * "Hey Remi": an on-device keyword spotter (sherpa-onnx) listens to the same mic audio while the
+   * glasses stream and starts a conversation when it hears the phrase, with the words said right
+   * after it. Nothing leaves the phone until then. Off by default; gate UI on glassesHas('setWakeWord').
+   */
+  setWakeWord: (on: boolean) => call('setWakeWord')(on),
   /** Mic capture for a memory; stopListening uploads to /api/transcribe and returns the words. */
   startListening: () => call('startListening')(),
   stopListening: () => call('stopListening')(),
@@ -235,6 +249,7 @@ export const defaultStatus: GlassesStatus = {
   mock: false,
   rosterPeople: 0,
   rosterSamples: 0,
+  wakeWord: false,
 };
 
 export function errorMessage(e: unknown): string {

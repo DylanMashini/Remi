@@ -11,6 +11,8 @@ export type GlassesStatus = {
   /** Size of the on-device roster: people, and enrollment photos embedded on the phone. */
   rosterPeople: number;
   rosterSamples: number;
+  /** "Hey Remi" listening is on (setWakeWord). Off by default. */
+  wakeWord: boolean;
 };
 
 export type Face = {
@@ -111,12 +113,18 @@ export type ChatStartResult = {
   silenceMs: number;
   /** "glasses-inband" | "phone-mic" | "none". */
   micSource: string;
+  /** "phone" (Ask Remi button) or "wake" ("Hey Remi" heard). */
+  trigger: string;
 };
 
 export type ChatStopResult = { ended: boolean; turns: number };
 
+export type WakeWordResult = { enabled: boolean; phrase: string };
+
 export type ChatEvent =
   | { kind: 'state'; state: ChatState; reason?: string | null; sessionId: string }
+  /** A conversation JS did not start (trigger "wake"); same fields as ChatStartResult. */
+  | ({ kind: 'started' } & ChatStartResult)
   | { kind: 'transcript'; role: 'user' | 'assistant'; text: string; final: boolean; sessionId: string }
   | { kind: 'turn'; question: string; answer: string; frame: boolean; route: string; sessionId: string };
 
@@ -133,6 +141,8 @@ export type GlassesModuleEvents = {
   onPhotoIndex: (status: PhotoIndexStatus) => void;
   /** Live conversation progress: state changes, live transcripts, finished turns. */
   onChat: (event: ChatEvent) => void;
+  /** "Hey Remi" was heard on the phone; a conversation is starting (onChat follows). */
+  onWake: (event: { keyword: string; source: string }) => void;
 };
 
 export type GlassesPreviewProps = ViewProps;

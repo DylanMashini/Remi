@@ -50,9 +50,11 @@ export type Chat = {
   endedReason: string | null;
   /** How the current session detects turns, for the screen's hint. */
   silenceMs: number;
+  /** "phone" (Ask Remi button) or "wake" ("Hey Remi" heard on the phone). */
+  trigger: 'phone' | 'wake';
 };
 
-export const idleChat: Chat = { state: 'idle', sessionId: null, user: '', assistant: '', turns: 0, endedReason: null, silenceMs: 0 };
+export const idleChat: Chat = { state: 'idle', sessionId: null, user: '', assistant: '', turns: 0, endedReason: null, silenceMs: 0, trigger: 'phone' };
 
 export type Feed = {
   status: GlassesStatus;
@@ -129,7 +131,7 @@ function setChat(patch: Partial<Chat>) {
 
 /** Starts a live conversation. Resolves once the socket is opening; progress arrives via onChat. */
 export async function startChat() {
-  setChat({ ...idleChat, state: 'connecting' });
+  setChat({ ...idleChat, state: 'connecting', trigger: 'phone' });
   try {
     const r = await Glasses.startChat();
     setChat({ sessionId: r.sessionId, silenceMs: r.silenceMs });
@@ -182,8 +184,14 @@ export function useGlassesFeed() {
         }
       }),
       addGlassesListener('onError', ({ message }) => reportError(message)),
+      addGlassesListener('onWake', () => {
+        // Swift is starting the conversation itself; show it from the first moment.
+        setChat({ ...idleChat, state: 'connecting', trigger: 'wake' });
+      }),
       addGlassesListener('onChat', (ev) => {
-        if (ev.kind === 'state') {
+        if (ev.kind === 'started') {
+          setChat({ sessionId: ev.sessionId, silenceMs: ev.silenceMs, trigger: ev.trigger === 'wake' ? 'wake' : 'phone' });
+        } else if (ev.kind === 'state') {
           if (ev.state === 'ended') {
             setChat({ state: 'ended', endedReason: ev.reason ?? 'ended', user: '', assistant: '' });
           } else if (ev.state === 'hearing') {

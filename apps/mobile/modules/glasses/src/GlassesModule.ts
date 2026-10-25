@@ -14,6 +14,7 @@ import type {
   PhotoIndexStatus,
   RosterSyncResult,
   StartStreamOptions,
+  WakeWordResult,
 } from './Glasses.types';
 
 declare class GlassesModule extends NativeModule<GlassesModuleEvents> {
@@ -29,6 +30,8 @@ declare class GlassesModule extends NativeModule<GlassesModuleEvents> {
   /** Live conversation with automatic turns (see Glasses.types ChatEvent). One at a time. */
   startChat(): Promise<ChatStartResult>;
   stopChat(): Promise<ChatStopResult>;
+  /** "Hey Remi" on the phone (sherpa-onnx keyword spotter, nothing leaves the device). Starts a chat when heard. */
+  setWakeWord(on: boolean): Promise<WakeWordResult>;
   startListening(): Promise<void>;
   stopListening(): Promise<ListenResult>;
   speak(speechId: string, text: string): Promise<void>;

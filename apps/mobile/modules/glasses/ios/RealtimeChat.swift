@@ -47,6 +47,13 @@ final class RealtimeChat {
   var onError: ((String) -> Void)?
   /// JPEG of what the glasses see right now, or nil. Asked once per wearer turn, as they start talking.
   var frameProvider: (() -> Data?)?
+  /// Set before `start()` when "Hey Remi" opened this conversation: the last ~3 s of mic audio
+  /// (24 kHz PCM16), so the question said in the same breath as the phrase is heard. The greeting
+  /// is skipped (the wearer already spoke), the mic opens at once, and audio arriving before the
+  /// session is ready is held rather than dropped.
+  var preroll: Data?
+  private var held = Data()
+  private static let heldMaxBytes = 24000 * 2 * 15
 
   private var task: URLSessionWebSocketTask?
   private let urlSession: URLSession = {
@@ -136,7 +143,13 @@ final class RealtimeChat {
   /// 24 kHz mono PCM16 from AudioCapture. Dropped while the glasses are speaking (half-duplex) and
   /// before the session is ready.
   func feed(pcm24k: Data) {
-    guard micOpen, sessionReady, !ended else { return }
+    guard !ended else { return }
+    if preroll != nil, !sessionReady {
+      // Woken by voice: the wearer is mid-question while the socket opens. Keep it.
+      if held.count < Self.heldMaxBytes { held.append(pcm24k) }
+      return
+    }
+    guard micOpen, sessionReady else { return }
     micBuffer.append(pcm24k)
     guard micBuffer.count >= Self.micChunkBytes else { return }
     let chunk = micBuffer
@@ -233,7 +246,25 @@ final class RealtimeChat {
     case "session.created":
       sessionReady = true
       NSLog("[Chat] session open")
-      if config.greeting.isEmpty { openMic() } else { sayScripted(config.greeting) }
+      if let pre = preroll {
+        // "Hey Remi, who is this?": send what was said before and during connecting, then go live.
+        // Server VAD finds the speech in it and ends the turn as usual; no commit needed.
+        preroll = nil
+        openMic()
+        // Fresh Data so indices start at 0: `pre` comes from a ring buffer trimmed with removeFirst,
+        // which leaves a non-zero startIndex, and Data slicing by absolute index traps on that.
+        var backlog = Data(capacity: pre.count + held.count)
+        backlog.append(pre)
+        backlog.append(held)
+        held.removeAll()
+        NSLog("[Chat] wake pre-roll \(pre.count / 48) ms + \(backlog.count / 48 - pre.count / 48) ms held")
+        var i = backlog.startIndex
+        while i < backlog.endIndex {
+          let end = min(i + 48000, backlog.endIndex) // 1 s per append
+          send(["type": "input_audio_buffer.append", "audio": backlog.subdata(in: i..<end).base64EncodedString()])
+          i = end
+        }
+      } else if config.greeting.isEmpty { openMic() } else { sayScripted(config.greeting) }
       // Safety net: if the greeting never plays (rejected, no audio), the wearer must still be heard.
       Task { @MainActor [weak self] in
         try? await Task.sleep(nanoseconds: 8_000_000_000)

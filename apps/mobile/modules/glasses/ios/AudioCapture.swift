@@ -16,6 +16,11 @@ final class AudioCapture {
   private var askActive = false
   private var chatActive = false
   private var ambientEnabled = false
+  /// "Hey Remi" listening: every 16 kHz buffer also goes to `onWakeAudio`, and the last few seconds
+  /// are kept at 24 kHz so the question said right after the phrase reaches the conversation.
+  private var wakeEnabled = false
+  private var preroll = Data()
+  private let prerollBytes = 24000 * 2 * 3 // 3 s
   private var lastInbandAt: Date?
   private var converters: [String: AVAudioConverter] = [:]
 
@@ -27,6 +32,9 @@ final class AudioCapture {
   var onAmbientChunk: ((Data) -> Void)?
   /// Called with 24 kHz mono PCM16 (no header) for every input buffer while a live conversation runs.
   var onChatAudio: ((Data) -> Void)?
+  /// Called with 16 kHz mono PCM16 for every input buffer while wake listening is on and nothing
+  /// else (conversation, ask) owns the mic. Audio-thread callback; the detector hops off it.
+  var onWakeAudio: ((Data) -> Void)?
   /// Toggles play-and-record on the shared audio session.
   var setRecording: ((Bool) -> Void)?
   var log: ((String) -> Void)?
@@ -59,11 +67,26 @@ final class AudioCapture {
   var isAsking: Bool { lock.lock(); defer { lock.unlock() }; return askActive }
   var isChatting: Bool { lock.lock(); defer { lock.unlock() }; return chatActive }
 
+  // MARK: Wake word
+
+  /// Audio only flows while a stream runs (in-band, or the ambient phone-mic fallback), so wake
+  /// listening is effectively stream-scoped.
+  func setWake(_ on: Bool) {
+    lock.lock(); wakeEnabled = on; if !on { preroll.removeAll() }; lock.unlock()
+  }
+
   // MARK: Live conversation
 
   /// Starts feeding `onChatAudio`. Uses the glasses' in-band audio when it is flowing, else the phone mic.
-  func startChat() throws {
-    lock.lock(); chatActive = true; lock.unlock()
+  /// Returns the pre-roll (last ~3 s at 24 kHz, empty unless wake listening was on): taken under the
+  /// same lock that flips the chat on, so no buffer is lost or duplicated between the two.
+  @discardableResult
+  func startChat() throws -> Data {
+    lock.lock()
+    chatActive = true
+    let pre = Data(preroll) // copy: rebases indices to 0 after the ring's removeFirst trims
+    preroll.removeAll()
+    lock.unlock()
     if !hasRecentInband && !engineRunning {
       log?("Chat: using phone mic (no in-band glasses audio)")
       startEngine()
@@ -72,6 +95,7 @@ final class AudioCapture {
         throw GlassesError("Could not start microphone capture")
       }
     }
+    return pre
   }
 
   func stopChat() {
@@ -119,12 +143,26 @@ final class AudioCapture {
   }
 
   private func append(_ buffer: AVAudioPCMBuffer) {
-    if isChatting {
-      // The conversation hears everything; ambient transcription pauses so the exchange is not logged twice.
-      if let pcm24 = convert(buffer, to: chatFormat), !pcm24.isEmpty { onChatAudio?(pcm24) }
-      if !isAsking { return }
+    lock.lock()
+    let chatting = chatActive
+    let wake = wakeEnabled && !chatActive && !askActive
+    lock.unlock()
+    if chatting || wake {
+      if let pcm24 = convert(buffer, to: chatFormat), !pcm24.isEmpty {
+        if chatting {
+          // The conversation hears everything; ambient transcription pauses so the exchange is not logged twice.
+          onChatAudio?(pcm24)
+        } else {
+          lock.lock()
+          preroll.append(pcm24)
+          if preroll.count > prerollBytes { preroll.removeFirst(preroll.count - prerollBytes) }
+          lock.unlock()
+        }
+      }
+      if chatting && !isAsking { return }
     }
     guard let data = convert(buffer, to: targetFormat), !data.isEmpty else { return }
+    if wake { onWakeAudio?(data) }
     var chunk: Data?
     lock.lock()
     if askActive { askBuffer.append(data) }

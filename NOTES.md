@@ -269,3 +269,39 @@ Evidence: `eval/face-models/RESULTS.md`.
   in the log as `[Chat] audio: N underrun(s)`). If stutter persists with 0 underruns logged, it is
   the Bluetooth link (camera stream + A2DP share it): compare with an ElevenLabs recognition line,
   which plays from disk; if that stutters too, the radio is the bottleneck, not the network.
+
+## "Hey Remi" wake word on the phone (Oct 25, ~1 AM)
+
+- Picovoice Porcupine was the obvious pick but its free tier is non-commercial/eval only. sherpa-onnx
+  (Apache 2.0) has an **open-vocabulary keyword spotter**: a 3.3M-param streaming Zipformer transducer
+  trained on GigaSpeech that scores audio against the BPE token sequence of any phrase, so there is
+  no training step and no account. The phrase is a string in `WakeWord.swift`
+  (`▁HE Y ▁RE M I @HEY_REMI`; tokens from the model's `bpe.model` via sentencepiece). openWakeWord
+  was ruled out: its training pipeline is 2022-era packages plus a GPU, and nothing runs it on iOS.
+- Prebuilt static iOS xcframeworks exist but not under the versioned GitHub release: they live under
+  the `xcframework` release tag (`sherpa-onnx-v1.13.8-ios-static.xcframework.zip`), with onnxruntime
+  from `csukuangfj/onnxruntime-libs` (`v1.28.2`). The checksums in sherpa's `Package.swift` match;
+  `ios/scripts/fetch-sherpa.sh` verifies them. Both are vendored like the DAT frameworks (gitignored,
+  fetched during `pod install`). The module map is `SherpaOnnxC`; link `c++`.
+- The `-mobile` variant of the KWS model crashes onnxruntime on the first decode (Reshape
+  `{17,1,128}` vs `{8,2,1,128}`). The plain `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01`
+  int8 files work and total 5 MB; they ship as the `GlassesWake` resource bundle.
+- Tuning on the Mac (`say` voices, white noise at -34 dB, threshold / score): 0.25 / 1.5 caught 5/5
+  "Hey Remi" + "Hey Remy" clips and fired on no sentence that merely contained "Remi" ("Remi
+  recognizes...", "Remind me what Remi does") or "Hey" ("Hey, remember to..."). Only "Hey Ramy"
+  fired, which sounds identical. 0.4 missed two voices. Expo noise untested at the time of writing.
+- Design: the detector is a third consumer of `AudioCapture`'s buffers (next to ambient chunks and
+  the chat), active only while streaming and idle otherwise, muted while `Speaker` plays a line.
+  A 3 s ring buffer at 24 kHz is handed to `RealtimeChat` as pre-roll and `feed` holds audio until
+  `session.created`, so the question said in the same breath as the phrase arrives whole and the
+  greeting is skipped. The realtime client secret is prefetched while wake is on (saves ~0.5 to 1 s).
+- Off by default. The phone tap and the glasses button remain the demo's primary ask path; turn the
+  switch on for a rehearsed beat only once it has proven itself in the room.
+- Oct 25 01:00 (first on-device "Hey Remi"): the phrase was heard and the UI switched, then the app
+  trapped in `RealtimeChat.handle` (`Data._Representation.subscript.getter`, EXC_BREAKPOINT). The
+  3 s pre-roll ring is trimmed with `Data.removeFirst(_:)`, which leaves the Data with a non-zero
+  `startIndex`; the backlog was then sliced `backlog[0..<48000]` by absolute index and went out of
+  bounds. Swift `Data` slices and trimmed Datas keep their parent indices. Fix: copy into a fresh
+  `Data()` (`Data(preroll)` / `append`) and iterate `startIndex..<endIndex` with `subdata(in:)`.
+  Crash reports came off the phone with `idevicecrashreport -k <dir>` (brew libimobiledevice); the
+  `.ips` is JSON after the first line.
