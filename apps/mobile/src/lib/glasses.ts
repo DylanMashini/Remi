@@ -37,8 +37,32 @@ export type FrameResult = {
   frameHeight: number;
 };
 
+/** See CONTRACT.md "Photo library index". Phone-local; suggestions for enrollment only. */
+export type PhotoIndexStatus = {
+  permission: 'notDetermined' | 'denied' | 'limited' | 'authorized';
+  state: 'idle' | 'indexing' | 'paused' | 'done';
+  indexed: number;
+  total: number;
+  faces: number;
+  skipped: number;
+  upgraded: number;
+  error?: string;
+};
+
+export type PhotoCandidate = { id: string; score: number; thumbUri: string; takenAt: string };
+
+export type EnrollInput = {
+  name: string;
+  relationship?: string;
+  notes?: string;
+  photoUris: string[];
+  /** The first photo; other photos enroll the face closest to it (group shots). */
+  seedPhotoUri?: string;
+};
+
 type Events = {
   onStatus: GlassesStatus;
+  onPhotoIndex: PhotoIndexStatus;
   onFrameResult: FrameResult;
   onAudioRoute: { route: AudioRoute; portName: string };
   onSpoken: { text: string; route: string };
@@ -53,12 +77,7 @@ type NativeGlasses = {
   startStream?: (opts?: { mock?: boolean }) => Promise<void>;
   stopStream?: () => Promise<void>;
   getStatus?: () => Promise<GlassesStatus>;
-  enrollPerson?: (p: {
-    name: string;
-    relationship?: string;
-    notes?: string;
-    photoUris: string[];
-  }) => Promise<{ personId: string; photos: number }>;
+  enrollPerson?: (p: EnrollInput) => Promise<{ personId: string; photos: number }>;
   captureGlassesPhoto?: () => Promise<string>;
   startAsk?: () => Promise<void>;
   stopAsk?: () => Promise<{ question: string; answer: string }>;
@@ -66,6 +85,12 @@ type NativeGlasses = {
   stopListening?: () => Promise<{ text: string }>;
   speak?: (speechId: string, text: string) => Promise<void>;
   syncRoster?: () => Promise<{ people: number; samples: number }>;
+  photoIndexStatus?: () => Promise<PhotoIndexStatus>;
+  photoIndexStart?: () => Promise<PhotoIndexStatus>;
+  photoIndexPause?: () => Promise<PhotoIndexStatus>;
+  photoIndexClear?: () => Promise<void>;
+  photoIndexSearch?: (seedPhotoUri: string) => Promise<PhotoCandidate[]>;
+  photoIndexExport?: (candidateId: string) => Promise<string>;
   addListener?: (event: string, listener: (payload: never) => void) => Subscription;
 };
 
@@ -111,8 +136,7 @@ export const Glasses = {
   startStream: (opts?: { mock?: boolean }) => call('startStream')(opts),
   stopStream: () => call('stopStream')(),
   getStatus: () => call('getStatus')(),
-  enrollPerson: (p: { name: string; relationship?: string; notes?: string; photoUris: string[] }) =>
-    call('enrollPerson')(p),
+  enrollPerson: (p: EnrollInput) => call('enrollPerson')(p),
   captureGlassesPhoto: () => call('captureGlassesPhoto')(),
   startAsk: () => call('startAsk')(),
   stopAsk: () => call('stopAsk')(),
@@ -122,6 +146,17 @@ export const Glasses = {
   speak: (speechId: string, text: string) => call('speak')(speechId, text),
   /** Re-embed everyone's enrollment photos on the phone (faces are matched on-device). */
   syncRoster: () => call('syncRoster')(),
+  /**
+   * Photo library index (suggestions while adding a person). Built from this phone's own library,
+   * stays on this phone, identical for caregiver and wearer accounts. Gate UI on
+   * glassesHas('photoIndexStart') so older dev builds degrade to the plain flow.
+   */
+  photoIndexStatus: () => call('photoIndexStatus')(),
+  photoIndexStart: () => call('photoIndexStart')(),
+  photoIndexPause: () => call('photoIndexPause')(),
+  photoIndexClear: () => call('photoIndexClear')(),
+  photoIndexSearch: (seedPhotoUri: string) => call('photoIndexSearch')(seedPhotoUri),
+  photoIndexExport: (candidateId: string) => call('photoIndexExport')(candidateId),
 };
 
 /** Subscribe to a module event; a no-op if the module or event emitter is missing. */

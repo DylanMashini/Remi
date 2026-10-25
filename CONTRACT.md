@@ -177,8 +177,12 @@ startStream(opts?: { mock?: boolean }): Promise<void>
   // MockDeviceKit with the phone's back camera (fallback demo path); status.mock becomes true.
 stopStream(): Promise<void>
 getStatus(): Promise<GlassesStatus>
-enrollPerson(p: { name: string; relationship?: string; notes?: string; photoUris: string[] }):
+enrollPerson(p: { name: string; relationship?: string; notes?: string; photoUris: string[]; seedPhotoUri?: string }):
   Promise<{ personId: string; photos: number }>    // detects faces on-device, multipart upload with boxes
+  // seedPhotoUri (optional, normally photoUris[0]): in every other photo the face closest to the
+  // seed's largest face is chosen (group shots from the library); a photo whose best face scores
+  // < 0.4 against the seed is rejected ("That photo does not look like the same person").
+  // Without a seed each photo's largest face is used (live capture, unchanged).
 captureGlassesPhoto(): Promise<string>       // file:// URI of a glasses photo
 startAsk(): Promise<void>                    // begins mic capture
 stopAsk(): Promise<{ question: string; answer: string }>  // uploads to /api/ask, speaks answer
@@ -186,6 +190,33 @@ startListening(): Promise<void>              // begins mic capture for a Remembe
 stopListening(): Promise<{ text: string }>   // uploads to /api/transcribe, returns the words (nothing spoken)
 speak(speechId: string, text: string): Promise<void>      // downloads /api/speech/id, plays over A2DP
 syncRoster(): Promise<{ people: number; samples: number }>  // re-embed the roster from the enrollment photos
+
+// Photo library index (PhotoIndex.swift). Phone-local, role-agnostic, never synced or uploaded.
+// Indexes faces in the newest 2,000 library photos with the same on-device model so that whoever
+// is enrolling a person can pick real photos of them (different days, angles, light) for the
+// remaining enrollment slots. It is a SEPARATE store from the roster: LocalRecognition never
+// reads it, and a library face joins the roster only when the enroller taps it and saves.
+photoIndexStatus(): Promise<PhotoIndexStatus>
+photoIndexStart(): Promise<PhotoIndexStatus>   // requests Photos permission (readWrite) if needed, starts or resumes
+photoIndexPause(): Promise<PhotoIndexStatus>   // stops after the current asset; checkpoint kept
+photoIndexClear(): Promise<void>               // deletes the index files and exported thumbnails
+photoIndexSearch(seedPhotoUri: string): Promise<PhotoCandidate[]>
+  // embeds the largest face in the seed photo and searches the index: score >= 0.45, greedy
+  // diversity (cosine < 0.92 to every kept candidate), up to 12, best first
+photoIndexExport(candidateId: string): Promise<string>
+  // file:// JPEG (1280 px max) of that candidate's asset in tmp, for enrollPerson.photoUris
+
+type PhotoIndexStatus = {
+  permission: 'notDetermined' | 'denied' | 'limited' | 'authorized';
+  state: 'idle' | 'indexing' | 'paused' | 'done';
+  indexed: number;      // assets processed (incl. zero-face and skipped)
+  total: number;        // assets in scope (max 2000)
+  faces: number;        // face entries stored
+  skipped: number;      // not on this device (iCloud originals are never downloaded)
+  upgraded: number;     // assets that needed the 2048 px pass for a small face
+};
+type PhotoCandidate = { id: string; score: number; thumbUri: string; takenAt: string };
+  // id = "<assetLocalIdentifier>#<faceIndex>"; thumbUri = 256 px square face crop in tmp
 
 type GlassesStatus = {
   registration: "unregistered" | "registering" | "registered";
@@ -204,6 +235,7 @@ onFrameResult({ faces: Face[]; speak?: { speechId: string; text: string }; frame
 onAudioRoute({ route: GlassesStatus["audioRoute"]; portName: string })
 onSpoken({ text: string; route: string })      // after each line plays
 onError({ message: string })
+onPhotoIndex(status: PhotoIndexStatus)        // at most every 500 ms while indexing, and on every state change
 
 View: <GlassesPreview style={...} />           // renders latest frame natively
 ```

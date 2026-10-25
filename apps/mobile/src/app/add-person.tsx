@@ -1,7 +1,7 @@
 import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -16,11 +16,21 @@ import {
 import { Button, Field, Icon, IconButton, Notice, Screen, SheetHeader } from '@/components/ui';
 import { Colors, Fonts, Gutter, Radii, Spacing, Type } from '@/constants/theme';
 import { useFeed } from '@/lib/feed';
-import { firstName, introductionLine } from '@/lib/format';
-import { errorMessage, Glasses } from '@/lib/glasses';
+import { firstName, introductionLine, shortDate } from '@/lib/format';
+import { errorMessage, Glasses, type PhotoCandidate } from '@/lib/glasses';
+import {
+  dismissPhotoIndexNotice,
+  photoIndexNoticeDismissed,
+  photoIndexSupported,
+  startPhotoIndex,
+  usePhotoIndex,
+} from '@/lib/photoIndex';
 import { useSession, wearerName } from '@/lib/session';
 
 const MAX_PHOTOS = 3;
+/** Gap between burst shots. Long enough for the person to turn a little, so the three
+ * embeddings are not near-duplicates; a full burst still fits in a 10 s live enrollment. */
+const BURST_GAP_MS = 1200;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default function AddPersonScreen() {
@@ -43,8 +53,114 @@ export default function AddPersonScreen() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<{ name: string; relationship: string; notes: string; photo: string } | null>(null);
 
+  // Library suggestions. Same behaviour for caregiver and wearer accounts; only the copy differs.
+  const photoIndex = usePhotoIndex();
+  const [found, setFound] = useState<{ seed: string; list: PhotoCandidate[] } | null>(null);
+  const [exported, setExported] = useState<Record<string, string>>({}); // candidate id -> file URI
+  const [exporting, setExporting] = useState<string | null>(null);
+  const [indexNotice, setIndexNotice] = useState(false);
+
   const who = wearerName(account);
+  const wearer = account?.role === 'WEARER';
   const glassesReady = status.connection === 'connected' && !status.mock;
+  const seedUri = photos[0];
+  const indexHasFaces = (photoIndex?.faces ?? 0) > 0;
+  // Results are keyed by the seed photo, so a changed first photo clears the grid without a setState.
+  const candidates = seedUri && indexHasFaces && found?.seed === seedUri ? found.list : [];
+
+  // Search the on-device index whenever the first photo changes.
+  useEffect(() => {
+    if (!photoIndexSupported || !seedUri || !indexHasFaces) return;
+    let alive = true;
+    Glasses.photoIndexSearch(seedUri)
+      .then((list) => {
+        if (alive) setFound({ seed: seedUri, list });
+      })
+      .catch((e) => {
+        // A seed without a detectable face just means no suggestions; the save step reports it.
+        console.warn('[add-person] photo search:', errorMessage(e));
+        if (alive) setFound({ seed: seedUri, list: [] });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [seedUri, indexHasFaces]);
+
+  // One-time offer to index, only while permission has never been asked. Dismissal is persisted.
+  useEffect(() => {
+    if (!photoIndexSupported || photoIndex?.permission !== 'notDetermined') return;
+    let alive = true;
+    photoIndexNoticeDismissed().then((done) => {
+      if (alive && !done) setIndexNotice(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [photoIndex?.permission]);
+
+  const closeIndexNotice = () => {
+    setIndexNotice(false);
+    dismissPhotoIndexNotice();
+  };
+
+  const indexNow = async () => {
+    closeIndexNotice();
+    try {
+      await startPhotoIndex();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+
+  const toggleCandidate = async (c: PhotoCandidate) => {
+    const uri = exported[c.id];
+    if (uri && photos.includes(uri)) {
+      setPhotos((p) => p.filter((u) => u !== uri));
+      return;
+    }
+    if (exporting) return;
+    setExporting(c.id);
+    setError(null);
+    try {
+      const file = uri ?? (await Glasses.photoIndexExport(c.id));
+      setExported((m) => ({ ...m, [c.id]: file }));
+      setPhotos((p) => {
+        if (p.includes(file)) return p;
+        if (p.length < MAX_PHOTOS) return [...p, file];
+        // The strip is full (the burst fills all three): swap the newest live photo out, never
+        // the seed (photo 1). If every slot is a library pick, swap the newest of those.
+        const libraryUris = new Set(Object.values(exported));
+        let idx = -1;
+        for (let i = p.length - 1; i >= 1; i--) {
+          if (!libraryUris.has(p[i])) {
+            idx = i;
+            break;
+          }
+        }
+        if (idx < 0) idx = p.length - 1;
+        return p.map((u, i) => (i === idx ? file : u));
+      });
+    } catch (e) {
+      setError(`That photo couldn't be used: ${errorMessage(e)}`);
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const chosenCount = candidates.filter((c) => exported[c.id] && photos.includes(exported[c.id])).length;
+  const slotsLeft = MAX_PHOTOS - photos.length;
+  const pickCopy =
+    slotsLeft >= 2
+      ? 'Pick up to two.'
+      : slotsLeft === 1
+        ? 'Pick one.'
+        : chosenCount >= MAX_PHOTOS - 1
+          ? 'Tap one to remove it.'
+          : 'Tap one to swap it in for the last photo.';
+  const foundCopy =
+    candidates.length === 1
+      ? `Found 1 photo that looks like this person. ${pickCopy}`
+      : `Found ${candidates.length} photos that look like this person. ${pickCopy}`;
 
   const takeOne = async (): Promise<string | null> => {
     const pic = await camera.current?.takePictureAsync({ quality: 0.7, shutterSound: false });
@@ -63,7 +179,7 @@ export default function AddPersonScreen() {
         if (!uri) break;
         got.push(uri);
         setPhotos([...got]);
-        if (got.length < MAX_PHOTOS) await sleep(250);
+        if (got.length < MAX_PHOTOS) await sleep(BURST_GAP_MS);
       }
       if (!name) nameRef.current?.focus();
     } catch (e) {
@@ -90,6 +206,8 @@ export default function AddPersonScreen() {
     setNotes('');
     setError(null);
     setSaved(null);
+    setFound(null);
+    setExported({});
   };
 
   const save = async () => {
@@ -104,6 +222,8 @@ export default function AddPersonScreen() {
         relationship: relationship.trim() || undefined,
         notes: notes.trim() || undefined,
         photoUris: photos,
+        // Other photos enroll the face closest to this one, so a group shot picks the right person.
+        seedPhotoUri: photos[0],
       });
       setSaved({ name: n, relationship: relationship.trim(), notes: notes.trim(), photo: photos[0] });
     } catch (e) {
@@ -189,9 +309,64 @@ export default function AddPersonScreen() {
               <Text style={styles.stripTitle}>
                 {photos.length >= MAX_PHOTOS ? 'Three photos ready' : `${photos.length} of ${MAX_PHOTOS} photos`}
               </Text>
-              <Text style={styles.stripHint}>Good light, facing the camera. Tap a photo to retake it.</Text>
+              <Text style={styles.stripHint}>Hold still, then turn a little between shots. Tap a photo to retake it.</Text>
             </View>
           </View>
+
+          {seedUri && candidates.length > 0 ? (
+            <View style={styles.library}>
+              <View style={{ gap: 2 }}>
+                <Text style={styles.libraryTitle}>From your photos</Text>
+                <Text style={styles.libraryHint}>{foundCopy}</Text>
+              </View>
+              <View style={styles.grid}>
+                {candidates.map((c) => {
+                  const uri = exported[c.id];
+                  const chosen = !!uri && photos.includes(uri);
+                  const date = c.takenAt ? shortDate(new Date(c.takenAt)) : '';
+                  return (
+                    <Pressable
+                      key={c.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${chosen ? 'Remove' : 'Add'} photo${date ? ` from ${date}` : ''}`}
+                      accessibilityState={{ selected: chosen, busy: exporting === c.id }}
+                      onPress={() => toggleCandidate(c)}
+                      style={({ pressed }) => [styles.cell, pressed && { opacity: 0.85 }]}>
+                      <View style={[styles.cellImageWrap, chosen && styles.cellChosen]}>
+                        <Image source={{ uri: c.thumbUri }} style={styles.cellImage} contentFit="cover" />
+                        {chosen ? (
+                          <View style={styles.cellCheck}>
+                            <Icon name="checkmark" size={11} color={Colors.surface} weight="bold" />
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={styles.cellDate} numberOfLines={1}>
+                        {date || ' '}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
+
+          {indexNotice ? (
+            <Notice
+              icon="photo.on.rectangle"
+              title="Suggest photos from your library"
+              body={
+                wearer
+                  ? 'Recall can find photos of the people you add in your own photos, on this phone. Nothing leaves the phone.'
+                  : `Recall can find photos of the people you add for ${who} in your own photos, on this phone. Nothing leaves the phone.`
+              }
+              onDismiss={closeIndexNotice}
+              action={
+                <View style={{ flexDirection: 'row', marginTop: Spacing.two }}>
+                  <Button title="Index photos" variant="secondary" icon="photo.on.rectangle" onPress={indexNow} />
+                </View>
+              }
+            />
+          ) : null}
 
           <View style={styles.row}>
             <Button
@@ -305,6 +480,26 @@ const styles = StyleSheet.create({
   stripTitle: { ...Type.secondaryBold, color: Colors.ink, marginLeft: Spacing.two },
   stripHint: { ...Type.caption, color: Colors.inkMute, marginLeft: Spacing.two },
   row: { flexDirection: 'row', gap: Spacing.three },
+  library: { gap: Spacing.three, paddingTop: Spacing.one },
+  libraryTitle: { ...Type.secondaryBold, color: Colors.ink },
+  libraryHint: { ...Type.caption, color: Colors.inkMute },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  cell: { width: '31.5%', gap: 4 },
+  cellImageWrap: { aspectRatio: 1, borderRadius: Radii.sm, overflow: 'hidden', backgroundColor: Colors.sand, borderWidth: 2, borderColor: 'transparent' },
+  cellChosen: { borderColor: Colors.harbor },
+  cellImage: { width: '100%', height: '100%' },
+  cellCheck: {
+    position: 'absolute',
+    right: 5,
+    bottom: 5,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.harbor,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cellDate: { ...Type.caption, color: Colors.inkMute, textAlign: 'center' },
   form: { gap: Spacing.five, paddingTop: Spacing.two },
   footnote: { ...Type.caption, color: Colors.inkMute, textAlign: 'center' },
   done: { flex: 1, alignItems: 'center', paddingHorizontal: Gutter, paddingTop: Spacing.eight, gap: Spacing.three },

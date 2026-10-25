@@ -46,6 +46,45 @@ export type EnrollPersonOptions = {
   notes?: string;
   /** file:// URIs (1 to 3). */
   photoUris: string[];
+  /**
+   * Normally photoUris[0]. In every other photo the face closest to this photo's largest face is
+   * enrolled (group shots picked from the library); a photo whose best face scores below 0.4 is
+   * rejected. Without it each photo's largest face is used.
+   */
+  seedPhotoUri?: string;
+};
+
+/**
+ * On-device photo library index (PhotoIndex.swift). Phone-local, role-agnostic, never uploaded or
+ * synced. Only used to suggest photos of a person who is already being enrolled; the glasses
+ * recognition path never reads it.
+ */
+export type PhotoIndexStatus = {
+  permission: 'notDetermined' | 'denied' | 'limited' | 'authorized';
+  state: 'idle' | 'indexing' | 'paused' | 'done';
+  /** Assets processed (including zero-face and skipped). */
+  indexed: number;
+  /** Assets in scope (max 2000). */
+  total: number;
+  /** Face entries stored. */
+  faces: number;
+  /** Assets not on this device (iCloud originals are never downloaded). */
+  skipped: number;
+  /** Assets that needed the 2048 px pass for a small face. */
+  upgraded: number;
+  /** Last indexing error, if any. */
+  error?: string;
+};
+
+export type PhotoCandidate = {
+  /** Opaque; pass to photoIndexExport. */
+  id: string;
+  /** Cosine similarity to the seed face (>= 0.45). */
+  score: number;
+  /** file:// 256 px square face crop for the grid. */
+  thumbUri: string;
+  /** ISO 8601, or "" when the asset has no date. */
+  takenAt: string;
 };
 
 export type EnrollResult = { personId: string; photos: number };
@@ -61,6 +100,8 @@ export type GlassesModuleEvents = {
   onAudioRoute: (event: { route: AudioRoute; portName: string }) => void;
   onSpoken: (event: { text: string; route: string }) => void;
   onError: (event: { message: string }) => void;
+  /** At most every 500 ms while indexing, and once on every state change. */
+  onPhotoIndex: (status: PhotoIndexStatus) => void;
 };
 
 export type GlassesPreviewProps = ViewProps;

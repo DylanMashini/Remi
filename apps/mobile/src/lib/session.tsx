@@ -9,6 +9,7 @@ import * as SecureStore from 'expo-secure-store';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { errorMessage, Glasses } from '@/lib/glasses';
+import { resumePhotoIndexIfAllowed } from '@/lib/photoIndex';
 
 const TOKEN_KEY = 'recall.token';
 const ACCOUNT_KEY = 'recall.account';
@@ -125,6 +126,8 @@ async function persist(token: string, account: Account) {
 async function configureGlasses(token: string) {
   try {
     await Glasses.configure({ backendUrl: BACKEND_URL, token });
+    // Resume the photo library index if permission was granted earlier. Never prompts.
+    resumePhotoIndexIfAllowed();
   } catch (e) {
     // Signed in anyway; the Live screen surfaces glasses errors.
     console.warn('[session] Glasses.configure failed:', errorMessage(e));

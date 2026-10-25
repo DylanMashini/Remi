@@ -15,13 +15,15 @@ struct EnrollOptions: Record {
   @Field var relationship: String?
   @Field var notes: String?
   @Field var photoUris: [String] = []
+  /// Optional: the first photo. Other photos pick the face closest to this one (group shots).
+  @Field var seedPhotoUri: String?
 }
 
 public final class GlassesModule: Module {
   public func definition() -> ModuleDefinition {
     Name("Glasses")
 
-    Events("onStatus", "onFrameResult", "onAudioRoute", "onSpoken", "onError")
+    Events("onStatus", "onFrameResult", "onAudioRoute", "onSpoken", "onError", "onPhotoIndex")
 
     OnCreate {
       let module = self
@@ -29,6 +31,10 @@ public final class GlassesModule: Module {
         GlassesController.shared.module = module
         GlassesController.shared.setup()
       }
+      PhotoIndex.shared.onStatus = { body in
+        Task { @MainActor in GlassesController.shared.emit("onPhotoIndex", body) }
+      }
+      PhotoIndex.shared.load()
     }
 
     AsyncFunction("configure") { (opts: ConfigureOptions) in
@@ -83,6 +89,34 @@ public final class GlassesModule: Module {
       try await GlassesController.shared.syncRoster()
     }
 
+    // Photo library index (PhotoIndex.swift): suggestions for enrollment only. Phone-local,
+    // never synced, never read by the glasses recognition path.
+    AsyncFunction("photoIndexStatus") { () -> [String: Any] in
+      PhotoIndex.shared.status()
+    }
+
+    AsyncFunction("photoIndexStart") { () async -> [String: Any] in
+      await PhotoIndex.shared.start()
+    }
+
+    AsyncFunction("photoIndexPause") { () -> [String: Any] in
+      PhotoIndex.shared.pause()
+    }
+
+    AsyncFunction("photoIndexClear") { () in
+      PhotoIndex.shared.clear()
+    }
+
+    AsyncFunction("photoIndexSearch") { (seedPhotoUri: String) async throws -> [[String: Any]] in
+      try await PhotoIndex.shared.searchSeedPhoto(seedPhotoUri).map {
+        ["id": $0.id, "score": $0.score, "thumbUri": $0.thumbUri, "takenAt": $0.takenAt]
+      }
+    }
+
+    AsyncFunction("photoIndexExport") { (candidateId: String) async throws -> String in
+      try await PhotoIndex.shared.exportCandidate(candidateId)
+    }
+
     AsyncFunction("speak") { (speechId: String, text: String) async throws in
       await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
         Task { @MainActor in
@@ -96,6 +130,15 @@ public final class GlassesModule: Module {
 }
 
 enum Enroll {
+  /// Below this cosine to the seed face, a chosen photo is rejected as a different person.
+  static let seedMatchThreshold: Float = 0.4
+
+  static func cosine(_ a: [Float], _ b: [Float]) -> Float {
+    var s: Float = 0
+    for i in 0..<min(a.count, b.count) { s += a[i] * b[i] }
+    return s  // both are L2-normalized
+  }
+
   static func run(_ p: EnrollOptions) async throws -> [String: Any] {
     let name = p.name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !name.isEmpty else { throw GlassesError("Name is required") }
@@ -107,12 +150,41 @@ enum Enroll {
     if let n = p.notes, !n.isEmpty { form.addField("notes", n) }
     // Every photo must contain a face the on-device model can embed; the boxes go up with the
     // photos so the server can crop the avatar around the face (it does no face detection itself).
+    //
+    // With a seed photo (the first one), each other photo contributes the face most similar to
+    // the seed's largest face, so a group shot picked from the library enrolls the right person.
+    // Without a seed (live capture), the largest face is used, as before.
+    var seed: [Float]?
+    let seedUri = p.seedPhotoUri?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if !seedUri.isEmpty {
+      let jpeg = try loadJPEG(seedUri)
+      guard let img = UIImage(data: jpeg) else { throw GlassesError("The first photo is not an image") }
+      guard let face = try FaceRecognizer.shared.detectAndEmbed(img, maxFaces: 1).first else {
+        throw GlassesError("No face found in the first photo")
+      }
+      seed = face.embedding
+    }
     var boxes: [[Int]] = []
     for (i, uri) in p.photoUris.enumerated() {
       let jpeg = try loadJPEG(uri)
       guard let img = UIImage(data: jpeg) else { throw GlassesError("Photo \(i + 1) is not an image") }
-      let faces = try FaceRecognizer.shared.detectAndEmbed(img, maxFaces: 1)
-      guard let face = faces.first else { throw GlassesError("No face found in photo \(i + 1)") }
+      let face: FaceRecognizer.Detection
+      if let seed, uri != seedUri {
+        let faces = try FaceRecognizer.shared.detectAndEmbed(img, maxFaces: 6)
+        guard !faces.isEmpty else { throw GlassesError("No face found in photo \(i + 1)") }
+        let scored = faces.map { ($0, cosine($0.embedding, seed)) }
+        let best = scored.max { $0.1 < $1.1 }!
+        NSLog("[Glasses] enroll photo %d: %d face(s), best cosine to seed %.2f", i + 1, faces.count, best.1)
+        guard best.1 >= seedMatchThreshold else {
+          throw GlassesError("That photo does not look like the same person (photo \(i + 1))")
+        }
+        face = best.0
+      } else {
+        guard let first = try FaceRecognizer.shared.detectAndEmbed(img, maxFaces: 1).first else {
+          throw GlassesError("No face found in photo \(i + 1)")
+        }
+        face = first
+      }
       boxes.append(face.box)
       form.addFile("photos", filename: "photo\(i).jpg", mime: "image/jpeg", data: jpeg)
     }

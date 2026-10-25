@@ -1,12 +1,21 @@
 import Constants from 'expo-constants';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button, Group, Notice, Row, Screen, ScreenHeader } from '@/components/ui';
-import { Gutter, Spacing } from '@/constants/theme';
+import { Colors, Gutter, Spacing } from '@/constants/theme';
 import { setStatus, useFeed } from '@/lib/feed';
 import { hostOf } from '@/lib/format';
 import { errorMessage, Glasses, glassesAvailable, glassesHas } from '@/lib/glasses';
+import {
+  clearPhotoIndex,
+  hasPhotoAccess,
+  pausePhotoIndex,
+  photoIndexDetail,
+  photoIndexSupported,
+  startPhotoIndex,
+  usePhotoIndex,
+} from '@/lib/photoIndex';
 import { BACKEND_URL, useSession } from '@/lib/session';
 
 export default function SettingsScreen() {
@@ -53,6 +62,20 @@ export default function SettingsScreen() {
   const caregiver = account?.role !== 'WEARER';
 
   const canSync = glassesHas('syncRoster');
+
+  // Photo library index: same row, same buttons, whoever is signed in. It is this phone's library.
+  const photoIndex = usePhotoIndex();
+  const indexing = photoIndex?.state === 'indexing';
+  const indexDone = photoIndex?.state === 'done';
+  const indexDenied = photoIndex?.permission === 'denied';
+  const indexProgress = photoIndex && photoIndex.total > 0 ? Math.min(1, photoIndex.indexed / photoIndex.total) : 0;
+  const indexTitle = indexing ? 'Pause' : photoIndex?.state === 'paused' ? 'Resume' : indexDone ? 'Index again' : 'Index photos';
+  const indexHasData = !!photoIndex && (photoIndex.faces > 0 || photoIndex.indexed > 0);
+  const confirmClearIndex = () =>
+    Alert.alert('Clear the photo index?', 'Recall forgets the faces it found in your photos. You can index again any time.', [
+      { text: 'Keep it', style: 'cancel' },
+      { text: 'Clear', style: 'destructive', onPress: () => run('indexClear', clearPhotoIndex, 'Photo index cleared.') },
+    ]);
   const rosterText =
     status.rosterPeople && status.rosterPeople > 0
       ? `${status.rosterPeople} ${status.rosterPeople === 1 ? 'person' : 'people'}, ${status.rosterSamples ?? 0} photos ready on this phone`
@@ -132,6 +155,49 @@ export default function SettingsScreen() {
               style={{ flex: 1 }}
             />
           </View>
+          {photoIndexSupported ? (
+            <View>
+              <Row
+                icon="photo.on.rectangle"
+                iconTone={indexDenied ? 'attention' : 'harbor'}
+                title="Photo library"
+                detail={photoIndexDetail(photoIndex)}
+              />
+              {indexing || photoIndex?.state === 'paused' ? (
+                <View style={styles.progressTrack} accessibilityRole="progressbar" accessibilityValue={{ now: Math.round(indexProgress * 100), min: 0, max: 100 }}>
+                  <View style={[styles.progressFill, { width: `${Math.max(2, indexProgress * 100)}%` }]} />
+                </View>
+              ) : null}
+              <View style={styles.buttons}>
+                {indexDenied ? (
+                  <Button title="Open iOS Settings" variant="quiet" icon="gear" onPress={() => Linking.openSettings()} style={{ flex: 1 }} />
+                ) : (
+                  <Button
+                    title={indexTitle}
+                    variant={indexing ? 'secondary' : 'quiet'}
+                    icon={indexing ? 'pause.fill' : 'photo.on.rectangle'}
+                    loading={busy === 'index'}
+                    onPress={() =>
+                      run(
+                        'index',
+                        async () => {
+                          if (indexing) {
+                            await pausePhotoIndex();
+                            return;
+                          }
+                          const s = await startPhotoIndex();
+                          if (!hasPhotoAccess(s)) throw new Error('Photos access is off. Allow it in iOS Settings to use suggestions.');
+                        },
+                        indexing ? 'Indexing paused.' : 'Indexing your photos on this phone.'
+                      )
+                    }
+                    style={{ flex: 1 }}
+                  />
+                )}
+                {indexHasData ? <Button title="Clear index" variant="quiet" loading={busy === 'indexClear'} onPress={confirmClearIndex} /> : null}
+              </View>
+            </View>
+          ) : null}
         </Group>
 
         <Group title="Privacy" footer="These are built in, not settings. They cannot be turned off.">
@@ -155,4 +221,13 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   scroll: { paddingHorizontal: Gutter, paddingBottom: Spacing.ten, gap: Spacing.five },
   buttons: { flexDirection: 'row', gap: Spacing.three, padding: Spacing.four, paddingTop: Spacing.two },
+  progressTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.sand,
+    marginHorizontal: Spacing.four,
+    marginBottom: Spacing.one,
+    overflow: 'hidden',
+  },
+  progressFill: { height: '100%', borderRadius: 2, backgroundColor: Colors.harbor },
 });

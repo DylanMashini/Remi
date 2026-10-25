@@ -61,6 +61,42 @@
   to Vision widths (56 px, 40 px), not image scale. 9.75% of 40 px faces fall under
   `minFaceSide = 36` and are skipped by every model alike.
 
+## Photo library index (Oct 24 night)
+
+Suggests library photos of the person being enrolled (`modules/glasses/ios/PhotoIndex.swift`,
+`src/lib/photoIndex.ts`). Separate store from the roster; `LocalRecognition` never reads it.
+
+- PhotoKit access level must be `.readWrite`: `.addOnly` cannot fetch assets at all. iOS 14+ also
+  has `.limited`; `PHPhotoLibraryPreventAutomaticLimitedAccessAlert = true` in Info.plist (set by
+  `plugins/withMetaWearables.js`) stops iOS popping its "Select More Photos" sheet on the first fetch.
+- Thumbnail size decides embedding quality, not detection. Vision finds 20 px faces, but
+  MobileFaceNet's 112 px input wants ~90 px faces in the source; below ~50 px the embedding drifts.
+  So the first request is 1024 px (never 512), and any face box under 120 px triggers a 2048 px
+  request for that asset with boxes matched by scaled centre distance. Faces still under
+  `minFaceSide` (36 px) are skipped.
+- `PHImageManager.requestImage` with `isSynchronous = true` must run off the main thread (it does,
+  on a `.utility` serial queue). With `isNetworkAccessAllowed = false`, iCloud-only originals return
+  nil with `PHImageResultIsInCloudKey = true`; they count as `skipped`. Nothing is ever downloaded
+  over the hotspot.
+- PhotoKit returns UIImages with EXIF orientation applied via `imageOrientation`, not pixels. Redraw
+  upright before Vision (same trick as `FaceRecognizer.detectAndEmbed(UIImage)`) or boxes land on
+  the wrong pixels for portrait shots. Boxes are stored with the actual returned width/height
+  (`imageWidth`/`imageHeight`) because `.aspectFit` sizes are not exactly 1024/2048.
+- Persistence is a flat Float32 file + JSON sidecar in Application Support (excluded from
+  backup), checkpointed every 50 assets; a `processed` set (incl. zero-face and skipped assets) makes
+  resume skip work. Pause on `willResignActive`, resume on `didBecomeActive`; no `BGProcessingTask`.
+- The indexer also yields while a stream is running (`PhotoIndex.setStreaming` from
+  `GlassesController.startStream/stopStream`) so recognition keeps its 2 s budget.
+- Search is one `cblas_sgemv` over N x 512; threshold 0.45, greedy diversity (drop a candidate whose
+  cosine to any kept one is >= 0.92) so a burst of identical shots does not fill the grid; one
+  candidate per asset; max 12.
+- `Enroll.run` now takes an optional `seedPhotoUri`: for other photos it embeds up to 6 faces and
+  keeps the one closest to the seed (group shots), rejecting the photo below cosine 0.4.
+- Live burst spacing went from 250 ms to 1,200 ms so three live photos are not near-duplicates.
+- React Compiler lint (`react-hooks/set-state-in-effect`) rejects a synchronous `setState` in an
+  effect body; derive "cleared" state from keys (results keyed by seed URI) instead.
+- Measured on the dev phone (iPhone 15 Pro): TODO elapsed time for 2,000 photos, `upgraded` count.
+
 ## Decisions
 
 - Backend is Next.js route handlers. Face recognition runs on the phone (Core ML MobileFaceNet + Apple Vision in the Swift module). The frame never leaves the phone; only `{personId|null, score}` is posted to `/api/recognitions` for the memory log and the spoken line. An earlier Python InsightFace sidecar was removed on Oct 24 evening.
