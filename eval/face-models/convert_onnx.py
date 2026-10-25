@@ -5,8 +5,10 @@ Core ML program with the contract FaceRecognizer.swift and FaceEval.swift expect
     python convert_onnx.py --onnx w600k_r50.onnx --out models/r50 --name "InsightFace buffalo_l ResNet50" \
         --license "InsightFace model zoo: non-commercial research use"
 
-Same recipe as apps/mobile/modules/glasses/scripts/convert_face_model.py (coremltools 9 has no ONNX
-frontend, so onnx2torch -> torch.jit.trace -> ct.convert), generalized over the model name.
+This is the only converter in the repo; the shipped model (apps/mobile/modules/glasses/ios/Models) is
+made with it too (see that module's scripts/README.md). coremltools 9 has no ONNX frontend, so the path
+is onnx2torch -> torch.jit.trace -> ct.convert(mlprogram, fp16, iOS 17). Exits non-zero if Core ML
+disagrees with onnxruntime below --min-cosine on random inputs.
 """
 
 from __future__ import annotations
@@ -31,7 +33,9 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--name", required=True)
     ap.add_argument("--license", default="")
+    ap.add_argument("--author", default="InsightFace (deepinsight), converted for Recall")
     ap.add_argument("--fp32", action="store_true")
+    ap.add_argument("--min-cosine", type=float, default=0.997)
     args = ap.parse_args()
 
     torch_model = convert(onnx.load(args.onnx)).eval()
@@ -46,6 +50,7 @@ def main() -> None:
         compute_units=ct.ComputeUnit.ALL,
     )
     mlmodel.short_description = f"{args.name} face embedder, 112x112 aligned RGB in, 512-d out"
+    mlmodel.author = args.author
     mlmodel.license = args.license
     mlmodel.version = args.name
 
@@ -65,6 +70,8 @@ def main() -> None:
         got = mlmodel.predict({"face": Image.fromarray(img)})["embedding"].reshape(-1)
         cosines.append(float(np.dot(ref, got) / (np.linalg.norm(ref) * np.linalg.norm(got))))
     print(f"coreml vs onnxruntime cosine on random inputs: {', '.join(f'{c:.5f}' for c in cosines)}")
+    if min(cosines) < args.min_cosine:
+        raise SystemExit(f"cosine {min(cosines):.5f} below --min-cosine {args.min_cosine}; not compiling")
 
     compiled = out / "FaceEmbedder.mlmodelc"
     if compiled.exists():

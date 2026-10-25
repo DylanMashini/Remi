@@ -25,16 +25,17 @@ final class PhotoIndex {
   // MARK: Tuning
 
   static let maxAssets = 2000
-  /// First pass thumbnail. MobileFaceNet wants ~90 px faces; 512 would upscale most of them.
+  /// First pass thumbnail. The 112 px embedder input wants ~90 px faces; 512 would upscale most of them.
   static let primarySide: CGFloat = 1024
   /// Faces narrower than this in the 1024 px image get a second detection on a 2048 px thumbnail.
   static let upgradeBelowWidth: CGFloat = 120
   static let upgradeSide: CGFloat = 2048
   static let checkpointEvery = 50
-  static let formatVersion = 2
-  static let dim = 512
-  static let matchThreshold: Float = 0.45
-  static let diversityThreshold: Float = 0.92
+  /// v3 added `model`; a checkpoint from another version or another embedder is discarded and rebuilt.
+  static let formatVersion = 3
+  static let dim = FaceModel.dim
+  static let matchThreshold = FaceModel.librarySuggestionThreshold
+  static let diversityThreshold = FaceModel.libraryDiversityThreshold
   static let maxCandidates = 12
   static let exportSide: CGFloat = 1280
   static let thumbSide = 256
@@ -64,6 +65,8 @@ final class PhotoIndex {
 
   private struct Sidecar: Codable {
     var version: Int
+    /// `FaceModel.name` of the embedder that produced `embeddings.f32` (absent before v3).
+    var model: String?
     var entries: [Entry]
     var processed: [String]
     var skipped: Int
@@ -138,8 +141,8 @@ final class PhotoIndex {
     guard fm.fileExists(atPath: Self.sidecarURL.path), fm.fileExists(atPath: Self.embeddingsURL.path) else { return }
     do {
       let side = try JSONDecoder().decode(Sidecar.self, from: Data(contentsOf: Self.sidecarURL))
-      guard side.version == Self.formatVersion else {
-        NSLog("[PhotoIndex] discarding index with format v\(side.version)")
+      guard side.version == Self.formatVersion, side.model == FaceModel.name else {
+        NSLog("[PhotoIndex] discarding index with format v\(side.version), model \(side.model ?? "none") (want v\(Self.formatVersion), \(FaceModel.name)); rebuilding")
         try? fm.removeItem(at: Self.sidecarURL)
         try? fm.removeItem(at: Self.embeddingsURL)
         return
@@ -169,7 +172,7 @@ final class PhotoIndex {
   /// Writes the checkpoint. Call with the lock NOT held; takes a snapshot under the lock.
   private func save() {
     lock.lock()
-    let side = Sidecar(version: Self.formatVersion, entries: entries, processed: Array(processed),
+    let side = Sidecar(version: Self.formatVersion, model: FaceModel.name, entries: entries, processed: Array(processed),
                        skipped: skipped, upgraded: upgraded, total: total, finished: finished)
     let floats = embeddings
     lock.unlock()

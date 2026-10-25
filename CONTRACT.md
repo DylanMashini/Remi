@@ -49,16 +49,19 @@ The phone's backend URL is fixed at build time from `EXPO_PUBLIC_BACKEND_URL` in
 
 ### `POST /api/recognitions`
 The phone matched a glasses frame on-device (`modules/glasses/ios/LocalRecognition.swift` +
-`FaceRecognizer.swift`: Apple Vision detection, InsightFace buffalo_sc MobileFaceNet as a 6.6 MB
-Core ML model, see `modules/glasses/scripts/README.md`). Match: cosine similarity against every
-roster photo embedding; a person's score is their best photo; known if score ≥ 0.5. Debounce (on
+`FaceRecognizer.swift`: Apple Vision detection, InsightFace buffalo_l ResNet50 ArcFace (`w600k_r50`)
+as an 83 MB Core ML model, see `modules/glasses/scripts/README.md`). Match: cosine similarity against
+every roster photo embedding; a person's score is their best photo; known if score ≥ 0.30
+(`FaceModel.matchThreshold`; source `eval/face-models/RESULTS.md`). Debounce (on
 the phone): announce a person at most once per 5 min, strangers at most once per 60 s, and
 strangers only when nobody known is in frame. Only the decision is posted, as JSON:
 ```json
 { "events": [ { "personId": "ck..", "score": 0.71, "box": [x, y, w, h] },
               { "personId": null, "score": 0.12, "box": [x, y, w, h], "count": 1 } ] }
 ```
-`box` is in pixels of the camera frame (504x896 typical) and is kept only as event data.
+`box` is in pixels of the camera frame (504x896 typical) and is kept only as event data. `score`
+is on the ResNet50 scale since Oct 24 night (strangers rarely above 0.15, same person 0.4 to 0.8);
+the server stores it as data only and nothing filters or colours by it.
 Response `{speak: {speechId, text}}` (or `{}` when nothing is said). The server logs
 `RECOGNITION` / `UNKNOWN` (with `data.score`, `data.box`, `data.source = "device"`) and `SPOKEN`,
 and builds the line (`knownLine` in `lib/line.ts`, including the newest memory). The phone speaks
@@ -192,7 +195,8 @@ speak(speechId: string, text: string): Promise<void>      // downloads /api/spee
 syncRoster(): Promise<{ people: number; samples: number }>  // re-embed the roster from the enrollment photos
 
 // Photo library index (PhotoIndex.swift). Phone-local, role-agnostic, never synced or uploaded.
-// Indexes faces in the newest 2,000 library photos with the same on-device model so that whoever
+// Indexes faces in the newest 2,000 library photos with the same on-device model (the sidecar
+// records the model name; a different model or format version discards and rebuilds it) so that whoever
 // is enrolling a person can pick real photos of them (different days, angles, light) for the
 // remaining enrollment slots. It is a SEPARATE store from the roster: LocalRecognition never
 // reads it, and a library face joins the roster only when the enroller taps it and saves.
@@ -201,7 +205,7 @@ photoIndexStart(): Promise<PhotoIndexStatus>   // requests Photos permission (re
 photoIndexPause(): Promise<PhotoIndexStatus>   // stops after the current asset; checkpoint kept
 photoIndexClear(): Promise<void>               // deletes the index files and exported thumbnails
 photoIndexSearch(seedPhotoUri: string): Promise<PhotoCandidate[]>
-  // embeds the largest face in the seed photo and searches the index: score >= 0.45, greedy
+  // embeds the largest face in the seed photo and searches the index: score >= 0.40, greedy
   // diversity (cosine < 0.92 to every kept candidate), up to 12, best first
 photoIndexExport(candidateId: string): Promise<string>
   // file:// JPEG (1280 px max) of that candidate's asset in tmp, for enrollPerson.photoUris

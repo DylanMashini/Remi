@@ -1,6 +1,6 @@
 """Shared Core ML conversion + verification recipe for the face-embedder benchmark.
 
-Mirrors apps/mobile/modules/glasses/scripts/convert_face_model.py:
+Mirrors eval/face-models/convert_onnx.py (the one converter for the app and the eval):
   - ML program, fp16, iOS17 minimum, compute_units ALL
   - one ImageType input "face" (1,3,H,W) with pixel normalization folded into scale/bias
   - one TensorType output "embedding" (1, D)

@@ -9,7 +9,7 @@ import UIKit
 final class LocalRecognition {
   static let shared = LocalRecognition()
 
-  static let matchThreshold: Float = 0.5
+  static let matchThreshold = FaceModel.matchThreshold
   static let knownDebounce: TimeInterval = 5 * 60
   static let unknownDebounce: TimeInterval = 60
   static let unknownLine = "Someone new is here."
@@ -67,7 +67,8 @@ final class LocalRecognition {
   /// Fetches `GET /api/people` and embeds every enrollment photo on the phone. Returns (people, samples).
   @discardableResult
   func syncRoster() async throws -> (people: Int, samples: Int) {
-    try FaceRecognizer.shared.load()
+    try await FaceRecognizer.shared.loadAsync()
+    let t0 = CFAbsoluteTimeGetCurrent()
     let req = try BackendClient.shared.request("/api/people", timeout: 20)
     let obj = try await BackendClient.shared.sendJSON(req)
     let list = obj["people"] as? [[String: Any]] ?? []
@@ -112,7 +113,7 @@ final class LocalRecognition {
       lastSyncAt = Date()
       lastSyncError = failures > 0 ? "\(failures) photo(s) could not be embedded" : nil
     }
-    NSLog("[Glasses] roster synced: \(newPeople.count) people, \(newSamples.count) samples, \(newPeople.count - known.count) without a usable photo")
+    NSLog("[Glasses] roster synced in \(Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)) ms: \(newPeople.count) people, \(newSamples.count) samples, \(newPeople.count - known.count) without a usable photo")
     return (newPeople.count, newSamples.count)
   }
 

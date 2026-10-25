@@ -1,6 +1,6 @@
 [
   {
-    "shortDescription" : "InsightFace buffalo_sc MobileFaceNet (w600k_mbf) face embedder, 112x112 aligned RGB in, 512-d out",
+    "shortDescription" : "InsightFace buffalo_l ResNet50 (w600k_r50) face embedder, 112x112 aligned RGB in, 512-d out",
     "metadataOutputVersion" : "3.0",
     "outputSchema" : [
       {
@@ -14,7 +14,7 @@
         "type" : "MultiArray"
       }
     ],
-    "version" : "buffalo_sc\/w600k_mbf",
+    "version" : "InsightFace buffalo_l ResNet50 (w600k_r50)",
     "modelParameters" : [
 
     ],
@@ -23,15 +23,15 @@
     "storagePrecision" : "Mixed (Float16, Float32)",
     "license" : "InsightFace model zoo: non-commercial research use",
     "mlProgramOperationTypeHistogram" : {
-      "Ios17.prelu" : 34,
+      "Ios17.prelu" : 25,
       "Ios17.squeeze" : 1,
       "Ios17.reshape" : 1,
       "Ios17.cast" : 1,
-      "Ios17.conv" : 49,
+      "Ios17.conv" : 53,
       "Ios17.mul" : 1,
+      "Ios17.add" : 25,
       "Ios17.linear" : 1,
-      "Ios17.add" : 13,
-      "Ios17.batchNorm" : 1,
+      "Ios17.batchNorm" : 26,
       "Ios17.expandDims" : 1
     },
     "computePrecision" : "Mixed (Float16, Float32, Int32)",

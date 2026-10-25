@@ -28,7 +28,7 @@
 - CocoaPods' resource copy step does not compile `.mlpackage`, so the module ships the precompiled `.mlmodelc` via `s.resource_bundles` (`GlassesModels.bundle`) and loads it with `MLModel(contentsOf:)`. Only the compiled model is committed (the `.mlpackage` is gitignored).
 - Vision on the iOS 27 simulator: every request fails with `Could not create inference context` (code 9) unless pinned to the CPU via `supportedComputeStageDevices` + `setComputeDevice(_:for:)`; Core ML programs likewise need `computeUnits = .cpuOnly` there. `MLShapedArray<Float>(multiArray)` traps on the fp16 model's Float16 output; switch on `dataType`.
 - `VNDetectFaceLandmarksRequest` returns garbage on the simulator CPU path (eye centres 4 px apart, landmark confidence 0.65, non-deterministic across revisions/upscaling), so the ArcFace 5-point alignment could not be validated and was dropped. `VNDetectFaceRectanglesRequest` is reliable; a square crop of 1.3x the box shifted up 0.2 box heights reproduces InsightFace's aligned embedding at cosine 0.94-0.97 (sweep in `FaceSelfTest.swift`). Vision boxes are bottom-left normalized; CoreGraphics draws bottom-left too, so the crop transform is wrapped in two y-flips.
-- MobileFaceNet (buffalo_sc) scores on `scripts/testdata` with InsightFace alignment: same person 0.73, different -0.06/0.03 (the old server model, buffalo_l: 0.80 / -0.08). The 0.5 threshold carries over unchanged.
+- MobileFaceNet (buffalo_sc) scores on `scripts/testdata` with InsightFace alignment: same person 0.73, different -0.06/0.03 (the old server model, buffalo_l: 0.80 / -0.08). (The 0.5 threshold did not carry over; see the evaluation and migration sections below.)
 - Oct 24 late: the server-side path (Python InsightFace sidecar, `/api/frames`, `FaceSample` embeddings in Postgres) was removed so recognition is fully on-device. Enrollment photos still upload to the server for the dashboard and the Remember portraits; the phone detects the face itself and sends the boxes (`faces` field) so the server can crop the avatar without running any face model. Photos enrolled from the web have no boxes: the avatar is a centre crop and the phone finds the face when it syncs the roster.
 - The DAT 1.0.1 xcframeworks do ship `ios-arm64_x86_64-simulator` slices, so the dev client builds for the iOS 27 simulator with no stubs (NOTES above about "no simulator runtime" is out of date: Xcode 27.1 has the iOS 27.0 runtime). The simulator build is ~5 GB of derived data; delete `apps/mobile/ios/build` when short on disk.
 - `expo prebuild` + simulator xcodebuild can be driven headless with `CI=1 pnpm prebuild`, then `xcodebuild -workspace ios/MemoryAid.xcworkspace -scheme MemoryAid -sdk iphonesimulator -destination 'id=<sim udid>' CODE_SIGNING_ALLOWED=NO`.
@@ -96,6 +96,50 @@ Suggests library photos of the person being enrolled (`modules/glasses/ios/Photo
 - React Compiler lint (`react-hooks/set-state-in-effect`) rejects a synchronous `setState` in an
   effect body; derive "cleared" state from keys (results keyed by seed URI) instead.
 - Measured on the dev phone (iPhone 15 Pro): TODO elapsed time for 2,000 photos, `upgraded` count.
+
+## Face model migration: MobileFaceNet to ResNet50 (Oct 24 night)
+
+Shipped model is now InsightFace buffalo_l `w600k_r50` (ResNet50 ArcFace, 83 MB compiled). Every
+embedder-dependent number lives in `FaceModel` in `FaceRecognizer.swift`: match 0.50 to **0.30**,
+library suggestions 0.45 to **0.40**, seed rejection 0.40 and near-duplicate 0.92 unchanged.
+Evidence: `eval/face-models/RESULTS.md`.
+
+- Conversion with `eval/face-models/convert_onnx.py` (now the only converter;
+  `convert_face_model.py` was deleted): Core ML vs onnxruntime cosine on random inputs
+  0.99819 / 0.99775 / 0.99713. The converter now refuses to compile below 0.997. fp16 on random
+  noise is the worst case; aligned real faces agree more closely (self-test below).
+- Gotcha: the compiled `weight.bin` is 87.2 MB (83 MiB). That is under GitHub's 100 MB hard limit
+  and over its 50 MB warning. Committed once, no LFS; do not reconvert and recommit casually,
+  because every churn adds another 87 MB to history.
+- Load is now off the main thread (`FaceRecognizer.loadAsync`, kicked off in `GlassesController.setup`)
+  and `startStream` awaits it before `LocalRecognition.setActive(true)`, so no frames are dropped
+  while the Neural Engine compiles the model on first launch. `syncRoster` also awaits it.
+- Found while checking the prompt's claim: `syncRoster` was *not* guaranteed to finish before the
+  first frame (it ran in the background next to `camera.stream.start()`), so for the first second or
+  two of a launch an enrolled face could be matched against an empty roster and announced as
+  "someone new is here". With the slower re-embed this window grows. `startStream` now awaits the
+  first sync of a launch (failure logs and continues); later syncs stay in the background.
+- The loaded model's version string is checked against `FaceModel.name` and logged; a mismatch
+  logs a WARNING (wrong thresholds), and an embedding that is not 512-d throws.
+- `PhotoIndex` sidecar is format v3 with a `model` field; the old v2 MobileFaceNet index is discarded
+  on first launch and rebuilds in the background (expected). The roster cache is in memory only and
+  re-embeds on the next launch.
+- Scores posted to `/api/recognitions` are on the new scale. Nothing filters or colours by them.
+  The web Live view prints the raw cosine as "Match NN%", so a correct match can read "Match 41%".
+- Simulator self-test (iPhone 17 sim, CPU only): InsightFace's aligned crop through Core ML
+  agrees with onnxruntime at cosine 0.9999 on all three test photos. The full Vision box-crop
+  pipeline agrees with InsightFace's aligned embedding at 0.97 / 0.97 / 0.97. Pair scores: same
+  person 0.77 (InsightFace 0.80), strangers -0.03 / -0.06. Decisions agree 3/3 at 0.30. Load 191 ms,
+  embed 22-26 ms per face, 67-135 ms per photo end to end (CPU only, so slower than the phone).
+- Device (iPhone 15 Pro, real glasses): TODO model load time (first launch and warm), per-face
+  embed time, roster sync time and sample count. Phone was not connected when this landed.
+- Device scores, TODO: enrolled at ~1 m `?`, enrolled at ~2.5 m `?`, stranger `?`, live-enrolled on
+  return `?`. If 2.5 m fails but 1 m passes, the face is under the 36 px gate: do not lower
+  `minFaceSide`; try the `.high` 720x1280 preset instead.
+- Rollback: the migration is one commit. `git revert <that commit>` restores MobileFaceNet and the
+  old thresholds, then rebuild with the xcodebuild + devicectl commands in `HANDOFF.md`. The
+  MobileFaceNet `.mlmodelc` is also retrievable alone with
+  `git checkout d40635e -- apps/mobile/modules/glasses/ios/Models/FaceEmbedder.mlmodelc`.
 
 ## Decisions
 

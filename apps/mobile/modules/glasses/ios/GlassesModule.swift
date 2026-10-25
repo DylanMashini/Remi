@@ -131,7 +131,7 @@ public final class GlassesModule: Module {
 
 enum Enroll {
   /// Below this cosine to the seed face, a chosen photo is rejected as a different person.
-  static let seedMatchThreshold: Float = 0.4
+  static let seedMatchThreshold = FaceModel.enrollSeedThreshold
 
   static func cosine(_ a: [Float], _ b: [Float]) -> Float {
     var s: Float = 0

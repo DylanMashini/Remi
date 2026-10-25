@@ -100,7 +100,11 @@ final class GlassesController {
     }
 
     // Faces are recognized on the phone (Core ML); the frame never leaves the device.
-    do { try FaceRecognizer.shared.load() } catch { emitError(error.localizedDescription) }
+    // The first load on a device compiles the 83 MB model for the Neural Engine (seconds), so it runs
+    // off the main thread; startStream awaits it before frames flow.
+    Task { [weak self] in
+      do { try await FaceRecognizer.shared.loadAsync() } catch { self?.emitError(error.localizedDescription) }
+    }
     let local = LocalRecognition.shared
     local.onResult = { [weak self] obj, w, h in
       Task { @MainActor in self?.handleFrameResult(obj, width: w, height: h) }
@@ -250,9 +254,18 @@ final class GlassesController {
     audioEnabledInStream = mic
     attachStreamListeners(camera.stream, audio: mic)
 
+    // Frames are only matched once the model is in memory (no "model not loaded" drops on first launch).
+    try await FaceRecognizer.shared.loadAsync()
+    // The first sync of a launch re-embeds every roster photo; finish it before frames flow so an
+    // enrolled face is never matched against an empty roster ("someone new is here"). Later syncs
+    // reuse the per-file cache and stay in the background. A failed sync does not block the stream.
+    if LocalRecognition.shared.lastSyncAt == nil {
+      do { _ = try await syncRoster() } catch { emitError("Roster sync failed: \(error.localizedDescription)") }
+    } else {
+      syncRosterInBackground()
+    }
     LocalRecognition.shared.setActive(true)
     audio.setAmbient(true)
-    syncRosterInBackground()
     camera.stream.start()
 
     try await waitUntil(timeout: 20, "camera stream to start") { [weak self] in self?.streaming == true }

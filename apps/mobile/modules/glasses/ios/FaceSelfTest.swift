@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 
 /// DEBUG-only check of the on-device recognizer against InsightFace numbers produced by
-/// scripts/reference_embeddings.py. Runs at launch when RECALL_FACE_SELFTEST=<dir> is in the
+/// scripts/reference_embeddings.py (InsightFace buffalo_l, the same w600k_r50 that ships). Runs at launch when RECALL_FACE_SELFTEST=<dir> is in the
 /// environment (simulator: SIMCTL_CHILD_RECALL_FACE_SELFTEST). Reads <dir>/reference.json and
 /// <dir>/<name>.aligned.png, logs results and writes <dir>/selftest-result.json.
 enum FaceSelfTest {
@@ -31,6 +31,10 @@ enum FaceSelfTest {
       try FaceRecognizer.shared.load()
       report["modelLoadMs"] = (CFAbsoluteTimeGetCurrent() - t0) * 1000
 
+      if let wrong = ref.first(where: { ($0.value["model"] as? String) != FaceModel.name }) {
+        throw GlassesError("reference.json entry \(wrong.key) is from model \(wrong.value["model"] as? String ?? "none"), app ships \(FaceModel.name); rerun reference_embeddings.py")
+      }
+      report["model"] = FaceModel.name
       let names = ref.keys.sorted()
       var pipelineEmb: [String: [Float]] = [:]
       var sweepEmb: [String: [Float]] = [:]  // "<image>|<variant>" -> embedding
@@ -38,7 +42,7 @@ enum FaceSelfTest {
       for name in names {
         let entry = ref[name]!
         var row: [String: Any] = [:]
-        let mbf = floats(entry["mbf"])
+        let refEmb = floats(entry["embedding"])
 
         // 1. Model equivalence: InsightFace's aligned crop through Core ML vs onnxruntime.
         if let crop = UIImage(contentsOfFile: dir.appendingPathComponent("\(name).aligned.png").path)?.cgImage {
@@ -50,7 +54,7 @@ enum FaceSelfTest {
               emb = try FaceRecognizer.shared.embedAligned(crop)
               times.append((CFAbsoluteTimeGetCurrent() - t) * 1000)
             }
-            row["alignedCosineVsOnnx"] = cosine(emb, mbf)
+            row["alignedCosineVsOnnx"] = cosine(emb, refEmb)
             row["embedMsMedian"] = times.sorted()[times.count / 2]
           } catch {
             row["alignedError"] = error.localizedDescription
@@ -69,7 +73,7 @@ enum FaceSelfTest {
             pipelineEmb[name] = d.embedding
             row["box"] = d.box
             row["refBox"] = entry["box"]
-            row["pipelineCosineVsInsightFace"] = cosine(d.embedding, mbf)
+            row["pipelineCosineVsInsightFace"] = cosine(d.embedding, refEmb)
             if let crop = FaceRecognizer.boxCrop(cg, box: CGRect(x: d.box[0], y: d.box[1], width: d.box[2], height: d.box[3]),
                                                  scale: FaceRecognizer.cropScale, dy: FaceRecognizer.cropShiftY),
                let png = UIImage(cgImage: crop).pngData() {
@@ -89,7 +93,7 @@ enum FaceSelfTest {
             for dy in [-0.2, -0.15, -0.1, -0.05] as [CGFloat] {
               let key = "s\(scale)_dy\(dy)"
               if let crop = FaceRecognizer.boxCrop(cg, box: box, scale: scale, dy: dy), let emb = try? FaceRecognizer.shared.embedAligned(crop) {
-                sweep[key] = Double(cosine(emb, mbf))
+                sweep[key] = Double(cosine(emb, refEmb))
                 sweepEmb["\(name)|\(key)"] = emb
               }
             }
@@ -105,7 +109,7 @@ enum FaceSelfTest {
       var pairs: [String: Any] = [:], refPairs: [String: Any] = [:]
       var agree = 0, total = 0
       for a in names { for b in names where a < b {
-        let r = cosine(floats(ref[a]?["mbf"]), floats(ref[b]?["mbf"]))
+        let r = cosine(floats(ref[a]?["embedding"]), floats(ref[b]?["embedding"]))
         refPairs["\(a)~\(b)"] = r
         if let ea = pipelineEmb[a], let eb = pipelineEmb[b] {
           let v = cosine(ea, eb)
@@ -127,7 +131,7 @@ enum FaceSelfTest {
       }
       report["cropSweepPairCosines"] = sweepPairs
       log("pair cosines (pipeline): \(pairs)")
-      log("pair cosines (InsightFace mbf): \(refPairs)")
+      log("pair cosines (InsightFace \(FaceModel.name)): \(refPairs)")
       log("match decisions agree at \(LocalRecognition.matchThreshold): \(agree)/\(total)")
       report["ok"] = true
     } catch {

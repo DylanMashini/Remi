@@ -8,8 +8,9 @@ import Vision
 
 /// On-device face detection + embedding. Apple Vision finds face rectangles; a square crop around
 /// each box (scaled 1.3x, shifted up a fifth of the box so the forehead/chin framing matches the
-/// ArcFace template) is resized to 112x112 and fed to the Core ML MobileFaceNet (buffalo_sc) in
-/// Models/FaceEmbedder.mlmodelc. Embeddings are L2-normalized, so cosine similarity is a dot product.
+/// ArcFace template) is resized to 112x112 and fed to the Core ML ResNet50 ArcFace (InsightFace
+/// buffalo_l, w600k_r50, 83 MB fp16) in Models/FaceEmbedder.mlmodelc. Embeddings are L2-normalized,
+/// so cosine similarity is a dot product. Every score threshold lives in `FaceModel` below.
 ///
 /// Why no landmark alignment: Vision's landmark request is unreliable on the simulator and the
 /// box-only crop already agrees with InsightFace's landmark-aligned embeddings at cosine 0.8-0.9
@@ -17,7 +18,29 @@ import Vision
 /// so scores stay consistent either way.
 ///
 /// Nothing here touches the network or disk: the frame is matched in memory and dropped.
-final class FaceRecognizer {
+/// The one place that names the embedder and every score threshold that depends on it. Change the
+/// model and these numbers together; each comes from `eval/face-models/RESULTS.md` (the phone
+/// pipeline over the 6,000 LFW pairs plus 56 px / 40 px glasses-like probes).
+enum FaceModel {
+  /// Written into persisted embeddings (PhotoIndex sidecar) so a model swap invalidates them.
+  static let name = "w600k_r50"
+  static let displayName = "InsightFace buffalo_l ResNet50 (w600k_r50)"
+  static let dim = 512
+
+  /// Glasses frame vs roster. At 0.30 ResNet50 accepts 99.0 / 98.9 / 96.6% of same-person pairs
+  /// (clean / 56 px / 40 px) with 0 stranger accepts in 9,000 comparisons; stranger p99 is 0.14.
+  static let matchThreshold: Float = 0.30
+  /// Library suggestions while enrolling. A human picks from them, so recall matters more than
+  /// precision; same-person p10 on clean photos is 0.53, stranger p99 0.14.
+  static let librarySuggestionThreshold: Float = 0.40
+  /// Library near-duplicate detection between two candidates (same shot, burst). Model-independent enough.
+  static let libraryDiversityThreshold: Float = 0.92
+  /// Enrollment: a chosen photo whose best face scores below this against the seed face is rejected
+  /// as a different person. Already below same-person p10 (0.46 even at 56 px).
+  static let enrollSeedThreshold: Float = 0.40
+}
+
+final class FaceRecognizer: @unchecked Sendable {  // mutable state is guarded by `lock`
   static let shared = FaceRecognizer()
 
   struct Detection {
@@ -62,13 +85,28 @@ final class FaceRecognizer {
       guard let constraint = m.modelDescription.inputDescriptionsByName["face"]?.imageConstraint else {
         throw GlassesError("FaceEmbedder model has no image input named 'face'")
       }
+      let version = (m.modelDescription.metadata[.versionString] as? String) ?? "?"
+      if !version.contains(FaceModel.name) {
+        NSLog("[Glasses] WARNING: bundled face model is '%@' but FaceModel expects %@; thresholds will be wrong", version, FaceModel.name)
+      }
       model = m
       imageConstraint = constraint
       loadError = nil
-      NSLog("[Glasses] face model loaded in %.0f ms from %@", (CFAbsoluteTimeGetCurrent() - t0) * 1000, url.lastPathComponent)
+      NSLog("[Glasses] face model %@ loaded in %.0f ms from %@", version, (CFAbsoluteTimeGetCurrent() - t0) * 1000, url.lastPathComponent)
     } catch {
       loadError = "Face model failed to load: \(error.localizedDescription)"
       throw GlassesError(loadError!)
+    }
+  }
+
+  /// `load()` off the caller's thread. The first load on a device compiles the 83 MB model for the
+  /// Neural Engine and can take seconds, so never call `load()` on the main thread.
+  func loadAsync() async throws {
+    if isLoaded { return }
+    try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+      DispatchQueue.global(qos: .userInitiated).async {
+        do { try self.load(); cont.resume() } catch { cont.resume(throwing: error) }
+      }
     }
   }
 
@@ -159,6 +197,7 @@ final class FaceRecognizer {
     vDSP_svesq(v, 1, &norm, vDSP_Length(v.count))
     norm = sqrt(norm)
     if norm > 0 { var inv = 1 / norm; vDSP_vsmul(v, 1, &inv, &v, 1, vDSP_Length(v.count)) }
+    guard v.count == FaceModel.dim else { throw GlassesError("Face model returned \(v.count)-d embedding, expected \(FaceModel.dim)") }
     return v
   }
 
