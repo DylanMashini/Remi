@@ -9,3 +9,5 @@ __pycache__/
 
 # Claude Code worktrees (separate git repos; never commit)
 .claude/worktrees/
+.vercel
+.env*
