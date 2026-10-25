@@ -23,7 +23,7 @@ public final class GlassesModule: Module {
   public func definition() -> ModuleDefinition {
     Name("Glasses")
 
-    Events("onStatus", "onFrameResult", "onAudioRoute", "onSpoken", "onError", "onPhotoIndex")
+    Events("onStatus", "onFrameResult", "onAudioRoute", "onSpoken", "onError", "onPhotoIndex", "onButton")
 
     OnCreate {
       let module = self
@@ -82,6 +82,12 @@ public final class GlassesModule: Module {
 
     AsyncFunction("stopListening") { () async throws -> [String: Any] in
       try await GlassesController.shared.stopListening()
+    }
+
+    // Same as pressing the glasses' capture button: name everyone in view now, ignoring the cooldown.
+    AsyncFunction("whoIsHere") { () async -> [String: Any?] in
+      let text = await GlassesController.shared.whoIsHere(trigger: "phone")
+      return ["text": text]
     }
 
     // Re-embed everyone's enrollment photos on the phone (after enrolling or editing people elsewhere).

@@ -23,3 +23,7 @@ export function knownLine(p: { name: string; relationship?: string | null; notes
 }
 
 export const UNKNOWN_LINE = "Someone new is here.";
+
+/** On demand (glasses button) only: the passive stream never speaks these. */
+export const NOBODY_LINE = "I don't see anyone right now.";
+export const UNKNOWN_ALSO_LINE = "Someone new is here too.";

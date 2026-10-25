@@ -1,6 +1,6 @@
 DAT_VERSION = '1.0.1'
 dat_dir = File.join(__dir__, 'Frameworks')
-dat_frameworks = %w[MWDATCore MWDATCamera MWDATMockDevice]
+dat_frameworks = %w[MWDATCore MWDATCamera MWDATMockDevice MWDATInputs]
 
 # The DAT SDK ships as binary dynamic xcframeworks inside its Swift package. We vendor them
 # (fetched on demand, gitignored) instead of using spm_dependency, because SPM binary targets

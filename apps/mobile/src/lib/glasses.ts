@@ -67,6 +67,8 @@ type Events = {
   onAudioRoute: { route: AudioRoute; portName: string };
   onSpoken: { text: string; route: string };
   onError: { message: string };
+  /** The wearer pressed a button on the glasses (capture = top right of the right temple). */
+  onButton: { button: 'capture' | 'action' };
 };
 
 type Subscription = { remove: () => void };
@@ -84,6 +86,7 @@ type NativeGlasses = {
   startListening?: () => Promise<void>;
   stopListening?: () => Promise<{ text: string }>;
   speak?: (speechId: string, text: string) => Promise<void>;
+  whoIsHere?: () => Promise<{ text: string | null }>;
   syncRoster?: () => Promise<{ people: number; samples: number }>;
   photoIndexStatus?: () => Promise<PhotoIndexStatus>;
   photoIndexStart?: () => Promise<PhotoIndexStatus>;
@@ -144,6 +147,11 @@ export const Glasses = {
   startListening: () => call('startListening')(),
   stopListening: () => call('stopListening')(),
   speak: (speechId: string, text: string) => call('speak')(speechId, text),
+  /**
+   * What the glasses' capture button does: name everyone in view right now (cooldown ignored) or
+   * say nobody is there. Resolves with the words spoken (null if a press was already in flight).
+   */
+  whoIsHere: () => call('whoIsHere')(),
   /** Re-embed everyone's enrollment photos on the phone (faces are matched on-device). */
   syncRoster: () => call('syncRoster')(),
   /**

@@ -52,7 +52,7 @@ export function eventTitle(type: string, patientName: string, personName?: strin
       return kind === "knew" ? `${patientName} knew ${who}` : `${patientName} was reminded of ${who}`;
     }
     case "SPOKEN":
-      return `${patientName} heard`;
+      return (data as { trigger?: unknown } | null)?.trigger ? `${patientName} asked who was here` : `${patientName} heard`;
     case "RECOGNITION":
       return personName ? `Recognized ${personName}` : "Recognized someone";
     case "UNKNOWN":

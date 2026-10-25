@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
-import { knownLine, UNKNOWN_LINE } from "@/lib/line";
+import { knownLine, NOBODY_LINE, UNKNOWN_LINE } from "@/lib/line";
 import { deleteBlobs, saveFile } from "@/lib/storage";
 import { listPeople } from "@/lib/people";
 import { speechIdFor } from "@/lib/tts";
@@ -21,6 +21,8 @@ export async function GET(req: Request) {
     return Response.json({
       people: await listPeople(patientId),
       unknown: { line: UNKNOWN_LINE, speechId: speechIdFor(UNKNOWN_LINE) },
+      // Glasses button with nobody in view; cached on the phone like the roster lines.
+      nobody: { line: NOBODY_LINE, speechId: speechIdFor(NOBODY_LINE) },
     });
   } catch (error) {
     return errorResponse(error);

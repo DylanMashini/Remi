@@ -9,7 +9,7 @@ trap 'rm -rf "$TMP"' EXIT
 echo "[Glasses] Fetching meta-wearables-dat-ios $VERSION"
 git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$VERSION" https://github.com/facebook/meta-wearables-dat-ios "$TMP/dat"
 mkdir -p "$DEST"
-for fw in MWDATCore MWDATCamera MWDATMockDevice; do
+for fw in MWDATCore MWDATCamera MWDATMockDevice MWDATInputs; do
   rm -rf "$DEST/$fw.xcframework"
   cp -R "$TMP/dat/$fw.xcframework" "$DEST/"
 done

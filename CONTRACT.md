@@ -67,10 +67,20 @@ Response `{speak: {speechId, text}}` (or `{}` when nothing is said). The server 
 and builds the line (`knownLine` in `lib/line.ts`, including the newest memory). The phone speaks
 the returned text; if the request fails it speaks the roster copy of `line` (Apple speech) so the
 wearer is never left in silence. The server does **not** re-debounce; the phone is authoritative.
-An unknown `personId` is `404`; an empty `events` array is `400`.
+An unknown `personId` is `404`; an empty `events` array is `400` (unless `trigger` is set, below).
 
 - Known line: `This is {name}, your {relationship}. {notes} {memory}` (omit missing parts).
   Unknown line: `Someone new is here.` Never guess a name below threshold.
+
+**On demand (glasses button).** A short press of the capture button (top right of the right
+temple, DAT Inputs capability, beta) or the phone's `Glasses.whoIsHere()` makes the phone answer
+"who is here?" from the latest frame with the debounce skipped. It posts the same body plus
+`"trigger": "glasses" | "phone"`; `events` may then be empty. The server names every known person,
+adds `Someone new is here too.` when a stranger stands next to them (or `Someone new is here.`
+alone), and says `I don't see anyone right now.` for an empty frame. Every logged event carries
+`data.source = "button"` and `data.trigger`; the timeline labels the SPOKEN row "asked who was here".
+The phone restarts the passive cooldown for everyone it named, so the stream does not repeat them.
+Offline, the phone speaks its roster copies (`nobody.speechId` from `GET /api/people` is cached).
 
 Roster on the phone: `GET /api/people` → for every `photoUrls` entry the phone fetches
 `/api/files/[id]` and embeds the largest face itself (cached per file id in memory). Synced when a
@@ -116,11 +126,11 @@ the face first and refuses photos without one), otherwise the centre square (web
 Unreadable photos are rejected with `422 {error, index}` before anything is saved. Response
 `201 {person}`. The phone re-syncs its roster right after.
 
-### `GET /api/people` → `{people: [Person], unknown: {line, speechId}}`
+### `GET /api/people` → `{people: [Person], unknown: {line, speechId}, nobody: {line, speechId}}`
 `Person = {id, name, relationship, notes, avatarUrl, photoUrl, photoUrls, photoCount, lastSeenAt, line, speechId, memoryCount, lastRememberedAt}`.
 `speechId` is the `/api/speech/[id]` id for `line`; minting it here starts ElevenLabs generation on
 the server, and the phone downloads every one during roster sync. `unknown` is the same for the
-stranger line. When the server is unreachable at recognition time the phone speaks its roster
+stranger line and `nobody` for the glasses-button line when no one is in view. When the server is unreachable at recognition time the phone speaks its roster
 copy with that cached audio.
 `avatarUrl` is `/api/files/<avatarFileId>` or null; `photoUrl` is the first full enrollment photo
 (for the Remember portrait); `photoUrls` is every enrollment photo, oldest first (the phone embeds

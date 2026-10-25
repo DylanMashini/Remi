@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import MWDATCamera
 import MWDATCore
+import MWDATInputs
 import MWDATMockDevice
 import UIKit
 
@@ -35,6 +36,10 @@ final class GlassesController {
   private var registrationToken: (any AnyListenerToken)?
   private let sessionTokens = ListenerTokenBag()
   private let streamTokens = ListenerTokenBag()
+  /// Inputs capability (beta): the glasses' capture button answers "who is here?" on demand.
+  private var inputs: Inputs?
+  private let inputTokens = ListenerTokenBag()
+  private var inputEventsTask: Task<Void, Never>?
 
   private let frameQueue = DispatchQueue(label: "recall.frames.decode", qos: .userInitiated)
   private let frameLock = NSLock()
@@ -236,6 +241,7 @@ final class GlassesController {
     }
 
     let session = try await ensureSession()
+    attachInputs(to: session)
 
     var config = StreamConfiguration(
       videoCodec: .raw,
@@ -380,6 +386,7 @@ final class GlassesController {
   }
 
   private func tearDownSession() async {
+    await detachInputs(remove: true)
     await sessionTokens.cancelAll()
     session?.stop()
     session = nil
@@ -397,10 +404,95 @@ final class GlassesController {
       audio.stopAll()
       streamTokens.clear()
       sessionTokens.clear()
+      inputTokens.clear()
+      inputEventsTask?.cancel()
+      inputEventsTask = nil
+      inputs = nil
       session = nil
       failPhoto(GlassesError("Glasses disconnected"))
     }
     emitStatus()
+  }
+
+  // MARK: Inputs (glasses button)
+
+  /// Subscribes to the capture button (top right of the right temple) and the action button. A
+  /// press asks "who is here?" and the glasses answer at once, debounce or not. Inputs is a beta
+  /// capability (dev/beta release channels) and MockDeviceKit may not offer it, so a failure here is
+  /// logged and the stream carries on without the button.
+  private func attachInputs(to session: DeviceSession) {
+    guard inputs == nil else { return }
+    let cap: Inputs?
+    do {
+      cap = try session.addInputs(configuration: InputsConfiguration(sources: [.captureButton, .actionButton], consumeBack: false))
+    } catch {
+      NSLog("[Glasses] inputs unavailable (button disabled): \(error.description)")
+      return
+    }
+    guard let cap else {
+      NSLog("[Glasses] inputs: session not started yet; button disabled")
+      return
+    }
+    inputs = cap
+    cap.statePublisher.listen { state in
+      NSLog("[Glasses] inputs: \(state.description)")
+    }.store(in: inputTokens)
+    cap.errorPublisher.listen { [weak self] error in
+      Task { @MainActor in
+        guard let self else { return }
+        NSLog("[Glasses] inputs error: \(error.description)")
+        // Every error ends delivery and leaves the capability attached; drop it so a later stream re-adds it.
+        await self.detachInputs(remove: true)
+      }
+    }.store(in: inputTokens)
+    let events = cap.events
+    inputEventsTask = Task { [weak self] in
+      for await event in events {
+        guard let self else { return }
+        await self.handleInput(event)
+      }
+    }
+  }
+
+  private func detachInputs(remove: Bool) async {
+    inputEventsTask?.cancel()
+    inputEventsTask = nil
+    await inputTokens.cancelAll()
+    if inputs != nil, remove, let s = session, s.state == .started {
+      do { try s.removeInputs() } catch { NSLog("[Glasses] removeInputs failed: \(error.description)") }
+    }
+    inputs = nil
+  }
+
+  private func handleInput(_ event: InputEvent) {
+    switch event {
+    case let .capture(press, _, _):
+      NSLog("[Glasses] capture button: \(press)")
+      // One event per press, fired on release. A hold or double press is the system's video gesture.
+      guard press == .shortPress else { return }
+      emit("onButton", ["button": "capture"])
+      Task { _ = await whoIsHere(trigger: "glasses") }
+    case .button:
+      NSLog("[Glasses] action button")
+      emit("onButton", ["button": "action"])
+      Task { _ = await whoIsHere(trigger: "glasses") }
+    case .nav, .select, .back, .drag:
+      break
+    @unknown default:
+      break
+    }
+  }
+
+  /// Names everyone in view right now (ignoring the per-person cooldown) or says nobody is there.
+  /// `trigger` is "glasses" for a button press or "phone" for the on-screen control; it is logged.
+  /// Returns the words spoken, or nil when a request was already in flight or nothing is streaming.
+  func whoIsHere(trigger: String) async -> String? {
+    guard streaming else {
+      NSLog("[Glasses] who is here (\(trigger)): no stream")
+      speaker.enqueue(speechId: nil, text: LocalRecognition.nobodyLine)
+      return LocalRecognition.nobodyLine
+    }
+    return await LocalRecognition.shared.whoIsHere(trigger: trigger)
   }
 
   private func attachStreamListeners(_ stream: MWDATCamera.Stream, audio withAudio: Bool) {
