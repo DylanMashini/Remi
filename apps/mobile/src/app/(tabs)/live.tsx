@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { type LayoutChangeEvent, ScrollView, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
+import { type LayoutChangeEvent, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { HorizonMark, Sky, Wordmark } from '@/components/brand';
 import { BottomBar, Button, Group, Icon, IconButton, Notice, Row, Screen, StatusPill, TextButton } from '@/components/ui';
@@ -20,7 +20,7 @@ import {
   type SpokenLine,
 } from '@/lib/feed';
 import { timeOf } from '@/lib/format';
-import { errorMessage, Glasses, glassesHas, GlassesPreviewView, type GlassesStatus } from '@/lib/glasses';
+import { errorMessage, Glasses, GlassesPreviewView, type GlassesStatus } from '@/lib/glasses';
 import { useSession, wearerName } from '@/lib/session';
 
 const FACE_TTL_MS = 1500;
@@ -108,8 +108,6 @@ export default function LiveScreen() {
   // Live conversation first; tap-to-ask stays as the fallback when the conversation cannot start.
   const [askMode, setAskMode] = useState<'chat' | 'tap'>('chat');
   const [chatBusy, setChatBusy] = useState(false);
-  const [wakeBusy, setWakeBusy] = useState(false);
-  const wakeSupported = glassesHas('setWakeWord');
 
   // Hide boxes once no new frame result has arrived for FACE_TTL_MS.
   useEffect(() => {
@@ -189,20 +187,6 @@ export default function LiveScreen() {
       setAskMode('tap');
     } finally {
       setChatBusy(false);
-    }
-  };
-
-  // "Hey Remi" is opt-in: the button stays the main way to ask. The phrase is matched on the phone.
-  const toggleWake = async (on: boolean) => {
-    if (wakeBusy) return;
-    setWakeBusy(true);
-    try {
-      await Glasses.setWakeWord(on);
-      await refreshStatus();
-    } catch (e) {
-      reportError(`"Hey Remi" unavailable: ${errorMessage(e)}`);
-    } finally {
-      setWakeBusy(false);
     }
   };
 
@@ -394,26 +378,6 @@ export default function LiveScreen() {
               </View>
             </View>
           </Sky>
-        ) : null}
-
-        {wakeSupported && askMode === 'chat' ? (
-          <Group footer={`Matched on the phone while the glasses stream. Nothing is sent anywhere until Remi hears the phrase.`}>
-            <Row
-              icon="waveform"
-              iconTone="dusk"
-              title='Say "Hey Remi"'
-              detail={status.wakeWord ? `Ask out loud, no tap needed${status.streaming ? '' : ' (once the glasses start)'}.` : 'Off. Ask with the button or the glasses button.'}
-              trailing={
-                <Switch
-                  value={!!status.wakeWord}
-                  onValueChange={toggleWake}
-                  disabled={wakeBusy}
-                  trackColor={{ true: Colors.dusk, false: Colors.duskMistDeep }}
-                  accessibilityLabel='Say "Hey Remi" to ask'
-                />
-              }
-            />
-          </Group>
         ) : null}
 
         {feed.spoken.length > 1 ? (

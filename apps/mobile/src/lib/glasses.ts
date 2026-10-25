@@ -187,7 +187,8 @@ export const Glasses = {
   /**
    * "Hey Remi": an on-device keyword spotter (sherpa-onnx) listens to the same mic audio while the
    * glasses stream and starts a conversation when it hears the phrase, with the words said right
-   * after it. Nothing leaves the phone until then. Off by default; gate UI on glassesHas('setWakeWord').
+   * after it. Nothing leaves the phone until then. Off by default, remembered across launches
+   * (the switch lives in Settings); gate UI on glassesHas('setWakeWord').
    */
   setWakeWord: (on: boolean) => call('setWakeWord')(on),
   /** Mic capture for a memory; stopListening uploads to /api/transcribe and returns the words. */

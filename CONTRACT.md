@@ -351,11 +351,15 @@ stopChat(): Promise<{ ended: boolean; turns: number }>
 setWakeWord(on: boolean): Promise<{ enabled: boolean; phrase: "Hey Remi" }>
   // "Hey Remi" (WakeWord.swift): sherpa-onnx open-vocabulary keyword spotter on the phone, fed the
   // same 16 kHz mic audio as ambient transcription, only while a stream runs and no conversation or
-  // ask owns the mic. Nothing leaves the phone until the phrase is heard. Off by default; survives
-  // stream stop/start. On a hit: onWake, then startChat(trigger "wake") with the last 3 s of audio
-  // (so "Hey Remi, who is this?" said in one breath is heard whole), no greeting, and audio said
-  // while the socket opens is held rather than dropped. Muted while Remi speaks; 5 s cooldown after
-  // a conversation ends. The client secret is prefetched while wake is on so the chat opens faster.
+  // ask owns the mic. Nothing leaves the phone until the phrase is heard. Off by default; the switch
+  // (Settings tab) is remembered across launches (UserDefaults) and survives stream stop/start. The
+  // model loads once at module setup, off the main thread, so toggling is instant after launch.
+  // On a hit: onWake, then startChat(trigger "wake") with the last 3 s of audio (so "Hey Remi, who
+  // is this?" said in one breath is heard whole), no greeting, and audio said while the socket
+  // opens is held rather than dropped. Muted while Remi speaks; 5 s cooldown after a conversation
+  // ends. The client secret (with the context packet baked in) is prefetched while wake is on and
+  // re-minted each time an ambient chunk is logged, so the chat opens fast with current context; a
+  // wake-triggered start uploads the partial ambient chunk in the background instead of waiting on it.
 startListening(): Promise<void>              // begins mic capture for a Remember memory
 stopListening(): Promise<{ text: string }>   // uploads to /api/transcribe, returns the words (nothing spoken)
 speak(speechId: string, text: string): Promise<void>      // downloads /api/speech/id, plays over A2DP

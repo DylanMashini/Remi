@@ -311,6 +311,17 @@ Evidence: `eval/face-models/RESULTS.md`.
   `Data()` (`Data(preroll)` / `append`) and iterate `startIndex..<endIndex` with `subdata(in:)`.
   Crash reports came off the phone with `idevicecrashreport -k <dir>` (brew libimobiledevice); the
   `.ips` is JSON after the first line.
+- Oct 25 (the switch took seconds to turn on): `setWakeWord(true)` loaded the three sherpa-onnx
+  sessions on first use, inside the toggle's promise, and the Switch's value was bound to native
+  status, so it sat in the old position until the load, the promise and a `getStatus()` round trip
+  all finished. The model now loads once at module setup in the background (the switch is a setting,
+  so it moved to the Settings tab and is remembered in UserDefaults), and the Switch flips at once
+  and only reverts on error. Found while in there: the conversation's context packet is baked into
+  the Realtime client secret when it is minted, and with "Hey Remi" on that secret was prefetched up
+  to 8 minutes earlier, so a wake-triggered "what were we talking about" answered from stale context
+  while `startChat` still waited up to 4 s for an ambient flush that could not reach it. The
+  prefetched secret is now re-minted whenever an ambient chunk is logged, the wake path uploads the
+  partial chunk in the background, and only the tapped path waits for the flush and mints fresh.
 
 ## Web dashboard pass (Oct 25, 12:30 to 2 AM)
 

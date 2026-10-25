@@ -139,15 +139,12 @@ final class GlassesController {
       }
     }
     audio.log = { msg in NSLog("[Glasses] \(msg)") }
-    audio.onAmbientChunk = { wav in
+    audio.onAmbientChunk = { [weak self] wav in
       Task.detached {
-        do {
-          let req = try BackendClient.shared.request("/api/utterances", method: "POST", contentType: "audio/wav", body: wav, timeout: 30)
-          let obj = try await BackendClient.shared.sendJSON(req)
-          if let text = obj["text"] as? String, !text.isEmpty { NSLog("[Glasses] utterance: \(text)") }
-        } catch {
-          NSLog("[Glasses] ambient upload failed: \(error.localizedDescription)")
-        }
+        let text = await Self.uploadUtterance(wav)
+        // The conversation's context packet is baked into the prefetched client secret, so a secret
+        // minted before these words were logged does not know them. Mint a fresh one.
+        if !text.isEmpty { await self?.renewPrefetchedChat() }
       }
     }
 
@@ -165,6 +162,8 @@ final class GlassesController {
       Task { @MainActor in
         NSLog("[Glasses] speak (\(Speaker.panLabel(pan))): \(text)")
         self?.speaker.enqueue(speechId: speechId, text: text, pan: pan)
+        // A recognition was just logged; a prefetched conversation would not know who is here.
+        self?.renewPrefetchedChat()
       }
     }
     local.onError = { [weak self] msg in
@@ -172,6 +171,15 @@ final class GlassesController {
     }
     local.onRosterSpeech = { [weak self] speechIds in
       Task { @MainActor in self?.speaker.prefetch(speechIds) }
+    }
+
+    // "Hey Remi" is a setting, so the detector loads at launch (5 MB, off the main thread) and a
+    // switch left on comes back on. Toggling then costs nothing but a flag.
+    _ = loadWakeWord()
+    if UserDefaults.standard.bool(forKey: Self.wakeDefaultsKey) {
+      Task { @MainActor [weak self] in
+        do { _ = try await self?.setWakeWord(true) } catch { NSLog("[Glasses] wake word restore failed: \(error.localizedDescription)") }
+      }
     }
   }
 
@@ -848,16 +856,19 @@ final class GlassesController {
 
     // Ambient audio uploads in 10 s chunks, so the last few seconds of the conversation the wearer
     // is about to ask about would otherwise sit untranscribed until after the chat. Send the partial
-    // chunk now and wait (briefly) for the server to log it before the chat's context is built.
+    // chunk now. The context packet is baked into the client secret when it is minted, so the
+    // upload only helps the answer if a fresh secret is minted after it lands:
+    //  - tapped (phone): wait for it (4 s cap) and mint fresh; the tap already implies a short wait.
+    //  - "Hey Remi" (wake): speed is the point. Upload in the background and open with the
+    //    prefetched secret, which was renewed when the last full chunk was logged.
     if let tail = audio.flushAmbient() {
-      let started = Date()
-      do {
-        let req = try BackendClient.shared.request("/api/utterances", method: "POST", contentType: "audio/wav", body: tail, timeout: 4)
-        let obj = try await BackendClient.shared.sendJSON(req)
-        let text = obj["text"] as? String ?? ""
+      if trigger == "wake" {
+        Task.detached { _ = await Self.uploadUtterance(tail) }
+      } else {
+        let started = Date()
+        let text = await Self.uploadUtterance(tail, timeout: 4)
         NSLog("[Glasses] chat: flushed \(tail.count / 32000) s of ambient audio in \(Int(Date().timeIntervalSince(started) * 1000)) ms: \(text)")
-      } catch {
-        NSLog("[Glasses] chat: ambient flush failed, starting anyway: \(error.localizedDescription)")
+        prefetchedChat = nil
       }
     }
 
@@ -955,12 +966,49 @@ final class GlassesController {
     return try await BackendClient.shared.sendJSON(req)
   }
 
+  /// Posts one WAV of ambient audio to the memory log. Returns the transcript ("" on failure; the
+  /// failure is logged, never thrown, because a conversation must start regardless).
+  private nonisolated static func uploadUtterance(_ wav: Data, timeout: TimeInterval = 30) async -> String {
+    do {
+      let req = try BackendClient.shared.request("/api/utterances", method: "POST", contentType: "audio/wav", body: wav, timeout: timeout)
+      let obj = try await BackendClient.shared.sendJSON(req)
+      let text = obj["text"] as? String ?? ""
+      if !text.isEmpty { NSLog("[Glasses] utterance: \(text)") }
+      return text
+    } catch {
+      NSLog("[Glasses] ambient upload failed: \(error.localizedDescription)")
+      return ""
+    }
+  }
+
+  /// Throws away the prefetched secret (its context packet predates what was just logged) and
+  /// fetches a new one. No-op unless "Hey Remi" is on and no conversation is running.
+  private func renewPrefetchedChat() {
+    guard wakeEnabled, chat == nil else { return }
+    prefetchedChat = nil
+    if prefetchTask != nil {
+      // One is being minted with the older context; fetch again once it lands.
+      prefetchRenewQueued = true
+      return
+    }
+    prefetchChatSession()
+  }
+  private var prefetchRenewQueued = false
+
   /// With "Hey Remi" on, keep a client secret ready so the conversation opens as soon as the phrase
-  /// is heard (the fetch is ~0.5 to 1 s). Renewed before it goes stale and after each use.
+  /// is heard (the fetch is ~0.5 to 1 s). Renewed before it goes stale, after each use, and whenever
+  /// an ambient chunk is logged (the context packet inside it would otherwise miss those words).
   private func prefetchChatSession() {
     guard wakeEnabled, prefetchedChat == nil, chat == nil, prefetchTask == nil else { return }
     prefetchTask = Task { @MainActor [weak self] in
-      defer { self?.prefetchTask = nil }
+      defer {
+        self?.prefetchTask = nil
+        if let self, self.prefetchRenewQueued {
+          self.prefetchRenewQueued = false
+          self.prefetchedChat = nil
+          self.prefetchChatSession()
+        }
+      }
       do {
         let obj = try await Self.fetchChatSession()
         guard let self, self.wakeEnabled else { return }
@@ -981,24 +1029,54 @@ final class GlassesController {
   // MARK: Wake word ("Hey Remi")
 
   private var wake: WakeWord?
+  /// The one model load, started at setup so the switch does not pay for it. A failed load is
+  /// retried on the next toggle (the task is dropped), and the error reaches the switch.
+  private var wakeLoad: Task<WakeWord, Error>?
   private(set) var wakeEnabled = false
   private var wakeStarting = false
   private var lastChatEndedAt: Date?
   /// After a conversation ends, ignore the phrase for this long: Remi's farewell is still in the air.
   private static let wakeCooldown: TimeInterval = 5
+  /// The switch is remembered across launches (UserDefaults); it is a setting, not a per-stream choice.
+  private static let wakeDefaultsKey = "glasses.wakeWord"
 
-  /// Turns "Hey Remi" on or off. Off by default; the Ask Remi button and the glasses button stay the
-  /// primary way to ask. Loading the model (~5 MB int8) happens once, off the main thread.
+  /// Starts loading the sherpa-onnx spotter (~5 MB int8, three ONNX sessions: 1 to 3 s on the phone)
+  /// off the main thread, once. Returns the shared task; `setWakeWord(true)` awaits it.
+  @discardableResult
+  private func loadWakeWord() -> Task<WakeWord, Error> {
+    if let t = wakeLoad { return t }
+    let started = Date()
+    let t = Task.detached(priority: .userInitiated) {
+      let w = try WakeWord()
+      NSLog("[Glasses] wake word model loaded in \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+      return w
+    }
+    wakeLoad = t
+    return t
+  }
+
+  /// Turns "Hey Remi" on or off. Off until the switch in Settings is turned on; the Ask Remi button
+  /// and the glasses button stay the primary way to ask. The model is loaded once (see loadWakeWord).
   func setWakeWord(_ on: Bool) async throws -> [String: Any] {
     setup()
+    UserDefaults.standard.set(on, forKey: Self.wakeDefaultsKey)
     if on {
       if wake == nil {
-        let w = try await Task.detached { try WakeWord() }.value
-        w.log = { msg in NSLog("[Glasses] \(msg)") }
-        w.onDetected = { [weak self] keyword in
-          Task { @MainActor in self?.wakeHeard(keyword) }
+        let load = loadWakeWord()
+        let w: WakeWord
+        do {
+          w = try await load.value
+        } catch {
+          if wakeLoad == load { wakeLoad = nil }
+          throw error
         }
-        wake = w
+        if wake == nil { // a concurrent toggle may have installed it while this one awaited
+          w.log = { msg in NSLog("[Glasses] \(msg)") }
+          w.onDetected = { [weak self] keyword in
+            Task { @MainActor in self?.wakeHeard(keyword) }
+          }
+          wake = w
+        }
       }
       guard let w = wake else { throw GlassesError("Wake word unavailable") }
       wakeEnabled = true

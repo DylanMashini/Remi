@@ -1,10 +1,10 @@
 import Constants from 'expo-constants';
 import { useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Linking, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { Button, Group, Notice, Row, Screen, ScreenHeader } from '@/components/ui';
 import { Colors, Gutter, Spacing } from '@/constants/theme';
-import { setStatus, useFeed } from '@/lib/feed';
+import { refreshStatus, setStatus, useFeed } from '@/lib/feed';
 import { errorMessage, Glasses, glassesAvailable, glassesHas } from '@/lib/glasses';
 import {
   clearPhotoIndex,
@@ -61,6 +61,26 @@ export default function SettingsScreen() {
   const caregiver = account?.role !== 'WEARER';
 
   const canSync = glassesHas('syncRoster');
+
+  // "Hey Remi" is opt-in; the Ask Remi button and the glasses button stay the primary way to ask.
+  // The switch flips at once and native confirms (or the error reverts it) when setWakeWord settles:
+  // the first enable may still wait on the model load if it has not finished since launch.
+  const wakeSupported = glassesHas('setWakeWord');
+  const [wakePending, setWakePending] = useState<boolean | null>(null);
+  const wakeOn = wakePending ?? !!status.wakeWord;
+  const toggleWake = async (on: boolean) => {
+    if (wakePending !== null) return;
+    setWakePending(on);
+    setMsg(null);
+    try {
+      await Glasses.setWakeWord(on);
+      await refreshStatus();
+    } catch (e) {
+      setMsg({ tone: 'attention', text: `"Hey Remi" could not be turned ${on ? 'on' : 'off'}: ${errorMessage(e)}` });
+    } finally {
+      setWakePending(null);
+    }
+  };
   // Rehearsal tools stay out of sight: tap the version five times (the same gesture Meta uses for Developer Mode).
   const [versionTaps, setVersionTaps] = useState(0);
   const rehearsal = versionTaps >= 5;
@@ -132,6 +152,27 @@ export default function SettingsScreen() {
             />
           </View>
         </Group>
+
+        {wakeSupported ? (
+          <Group
+            title="Ask Remi"
+            footer="The phrase is matched on this phone while the glasses stream, with no network. Nothing is sent anywhere until Remi hears it. The Ask Remi button and the glasses button always work.">
+            <Row
+              icon="waveform"
+              iconTone="dusk"
+              title='Say "Hey Remi"'
+              detail={wakeOn ? `Ask out loud, no tap needed${status.streaming ? '' : ' (once the glasses start)'}.` : 'Off. Ask with the button or the glasses button.'}
+              trailing={
+                <Switch
+                  value={wakeOn}
+                  onValueChange={toggleWake}
+                  trackColor={{ true: Colors.dusk, false: Colors.duskMistDeep }}
+                  accessibilityLabel='Say "Hey Remi" to ask'
+                />
+              }
+            />
+          </Group>
+        ) : null}
 
         <Group
           title="Recognition"
