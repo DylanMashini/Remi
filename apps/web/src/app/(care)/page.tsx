@@ -4,17 +4,16 @@ import { deleteReminder } from "./actions";
 import { Avatar } from "@/components/Avatar";
 import { getCare } from "@/components/care";
 import { dayKey, formatAgo, formatDayHeading, formatShortDay, formatTime, formatWhen, greeting } from "@/components/format";
-import { BellIcon, GlassesIcon, MemoryIcon, PersonIcon, PlusIcon, TrashIcon } from "@/components/icons";
+import { BellIcon, GlassesIcon, LiveIcon, MemoryIcon, PersonIcon, PillIcon, TrashIcon } from "@/components/icons";
 import { HorizonMark } from "@/components/Logo";
 import { Timeline } from "@/components/Timeline";
+import { ensureDoses } from "@/lib/medications";
 import {
-  buttonPrimary,
   buttonSecondary,
   EmptyState,
   Group,
   iconButtonDanger,
   Notice,
-  PageHeader,
   PageSkeleton,
   Row,
   RowIcon,
@@ -38,6 +37,7 @@ async function Today() {
   const now = new Date();
   const startOfDay = new Date(now);
   startOfDay.setHours(0, 0, 0, 0);
+  await ensureDoses(patientId, now);
 
   const [todayEvents, latest, lastSpoken, upcoming, peopleCount, recentFaces] = await Promise.all([
     prisma.event.findMany({
@@ -66,47 +66,68 @@ async function Today() {
 
   return (
     <>
-      <PageHeader eyebrow={formatDayHeading(now)} title={`${greeting(now)}, ${user.name.split(" ")[0]}`}>
-        {active ? (
-          <StatusPill tone="good">Glasses active</StatusPill>
-        ) : (
-          <StatusPill tone="idle">{latest ? `Quiet since ${formatWhen(latest.createdAt, now)}` : "Glasses not heard from yet"}</StatusPill>
-        )}
-        <Link href="/people/new" className={buttonPrimary}>
-          <PlusIcon size={18} />
-          Add a person
-        </Link>
-      </PageHeader>
+      {/*
+       * The Today header is the sky of the hour, ending in the horizon. The greeting sits in the
+       * high sky; the last words Remi said sit just above the horizon line, with the sun on it.
+       * This is the one place on the dashboard that carries the gradient.
+       */}
+      <header className="relative -mx-4 -mt-6 overflow-hidden bg-sky px-4 pb-0 pt-7 text-ink sm:-mx-[clamp(20px,4vw,56px)] sm:px-[clamp(20px,4vw,56px)] md:-mt-10 md:rounded-b-[28px] md:pt-10">
+        <div className="mx-auto flex w-full max-w-[960px] flex-col gap-8">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[15px] text-ink-soft">{formatDayHeading(now)}</span>
+              <h1 className="m-0 font-display text-[30px] font-extrabold leading-[1.1] tracking-[-0.6px] sm:text-[36px]">
+                {greeting(now)}, {user.name.split(" ")[0]}
+              </h1>
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5 sm:pt-1">
+              {active ? (
+                <StatusPill tone="good">Glasses active</StatusPill>
+              ) : (
+                <StatusPill tone="idle">{latest ? `Quiet since ${formatWhen(latest.createdAt, now)}` : "Glasses not heard from yet"}</StatusPill>
+              )}
+              <Link href="/live" className={`${buttonSecondary} bg-surface/70`}>
+                <LiveIcon size={18} />
+                Live
+              </Link>
+            </div>
+          </div>
+
+          <section aria-labelledby="heard" className="flex flex-col gap-3 pb-7 sm:pb-9">
+            <h2 id="heard" className="m-0 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[15px] font-bold text-dusk-deep">
+              {lastSpoken ? `Remi said to ${self ? "you" : patientName}` : `What Remi will say to ${who}`}
+              {lastSpoken ? <span className="font-normal text-ink-soft">{formatWhen(lastSpoken.createdAt, now)}</span> : null}
+            </h2>
+            {lastSpoken ? (
+              <p className="m-0 max-w-[26ch] text-balance font-display text-[28px] font-extrabold leading-[1.15] tracking-[-0.5px] sm:text-[40px]">
+                &ldquo;{lastSpoken.text}&rdquo;
+              </p>
+            ) : (
+              <p className="m-0 max-w-[40ch] font-display text-[24px] font-bold leading-snug tracking-[-0.3px] text-ink-soft sm:text-[30px]">
+                Nothing yet. When someone you added walks up, Remi says their name, your relationship, and your note.
+              </p>
+            )}
+            {lastSpoken ? null : (
+              <Link href="/people" className="w-fit text-[15px] font-bold text-dusk-deep underline-offset-4 hover:underline">
+                Hear what each introduction sounds like
+              </Link>
+            )}
+          </section>
+        </div>
+        {/* The horizon: the sun sits on the line that closes the sky. */}
+        <div className="pointer-events-none absolute inset-x-0 -bottom-[3px] flex items-end">
+          <div className="mx-auto flex w-full max-w-[960px] justify-end px-2">
+            <HorizonMark size={64} line="transparent" />
+          </div>
+        </div>
+        <div className="absolute inset-x-0 bottom-0 h-[3px] bg-dusk" aria-hidden="true" />
+      </header>
 
       {peopleCount === 0 ? (
         <Notice tone="info" icon={<PersonIcon size={20} />} title="Finish setting up" action={<Link href="/start/person" className={buttonSecondary}>Add the first person</Link>}>
           Remi only recognizes people you add. Start with the one or two people {who === "you" ? "you see" : `${patientName} sees`} most.
         </Notice>
       ) : null}
-
-      {/* The one loud thing on the page: the last words Remi said, on the sky of the hour. */}
-      <section
-        aria-labelledby="heard"
-        className="flex flex-col gap-4 rounded-lg bg-sky p-6 text-ink shadow-[inset_0_-3px_0_var(--color-dusk)] sm:p-8"
-      >
-        <h2 id="heard" className="m-0 flex items-center gap-2.5 text-[15px] font-bold text-dusk-deep">
-          <HorizonMark size={22} />
-          {lastSpoken ? `Remi said to ${self ? "you" : patientName}` : `What Remi will say to ${who}`}
-          {lastSpoken ? <span className="font-normal text-ink-soft">{formatWhen(lastSpoken.createdAt, now)}</span> : null}
-        </h2>
-        {lastSpoken ? (
-          <p className="m-0 font-display text-[28px] font-extrabold leading-[1.2] tracking-[-0.5px] sm:text-[38px]">&ldquo;{lastSpoken.text}&rdquo;</p>
-        ) : (
-          <p className="m-0 font-display text-[24px] font-bold leading-snug tracking-[-0.3px] text-ink-soft sm:text-[30px]">
-            Nothing yet. When someone you added walks up, Remi will say their name, your relationship, and your note.
-          </p>
-        )}
-        {lastSpoken ? null : (
-          <Link href="/people" className="w-fit text-[15px] font-bold text-dusk-deep underline-offset-4 hover:underline">
-            See what each person&apos;s introduction sounds like
-          </Link>
-        )}
-      </section>
 
       {lastUnknown ? (
         <Notice
@@ -145,7 +166,12 @@ async function Today() {
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Group
           title="Coming up"
-          action={<Link href="/reminders">Add a reminder</Link>}
+          action={
+            <span className="flex gap-4">
+              <Link href="/medication">Medication</Link>
+              <Link href="/reminders">Add a reminder</Link>
+            </span>
+          }
           footer={upcoming.length ? "Remi says each one once, at its time." : undefined}
         >
           {upcoming.length === 0 ? (
@@ -169,15 +195,26 @@ async function Today() {
                       <span className="text-[13px] text-ink-mute">{dayKey(r.dueAt) === dayKey(now) ? "Today" : formatShortDay(r.dueAt)}</span>
                     </span>
                   }
-                  title={<span className={i === 0 ? "font-bold" : ""}>{r.text}</span>}
+                  title={
+                    <span className={`inline-flex items-start gap-2 ${i === 0 ? "font-bold" : ""}`}>
+                      {r.medicationId ? <PillIcon size={16} className="mt-1 shrink-0 text-dusk" aria-label="Medication" /> : null}
+                      {r.text}
+                    </span>
+                  }
                   value={due ? "Due now" : i === 0 ? "Next" : undefined}
                   valueTone={due ? "attention" : "good"}
                   trailing={
-                    <form action={deleteReminder.bind(null, r.id)}>
-                      <button type="submit" className={iconButtonDanger} aria-label={`Remove reminder: ${r.text}`} title="Remove reminder">
-                        <TrashIcon size={18} />
-                      </button>
-                    </form>
+                    r.medicationId ? (
+                      <Link href="/medication" className="text-[15px] font-bold">
+                        Doses
+                      </Link>
+                    ) : (
+                      <form action={deleteReminder.bind(null, r.id)}>
+                        <button type="submit" className={iconButtonDanger} aria-label={`Remove reminder: ${r.text}`} title="Remove reminder">
+                          <TrashIcon size={18} />
+                        </button>
+                      </form>
+                    )
                   }
                 />
               );

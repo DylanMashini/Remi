@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { logEvent } from "@/lib/events";
+import { ensureDoses } from "@/lib/medications";
 import { speechIdFor, withoutAudioTags } from "@/lib/tts";
 import { errorResponse } from "../../_lib/http";
 
@@ -9,6 +10,8 @@ export async function GET(req: Request) {
   try {
     const { patientId } = await requireSession(req);
     const now = new Date();
+    // Medication doses become reminder rows here, so the phone needs nothing new.
+    await ensureDoses(patientId, now);
     const due = await prisma.reminder.findMany({
       where: { patientId, firedAt: null, dueAt: { lte: now } },
       orderBy: { dueAt: "asc" },
@@ -20,8 +23,9 @@ export async function GET(req: Request) {
       if (claimed.count !== 1) continue;
       const speechId = speechIdFor(r.text);
       const text = withoutAudioTags(r.text);
-      await logEvent(patientId, "REMINDER", text, { data: { reminderId: r.id, dueAt: r.dueAt.toISOString(), speechId } });
-      await logEvent(patientId, "SPOKEN", text, { data: { speechId, source: "reminder", reminderId: r.id } });
+      const medication = r.medicationId ? { medicationId: r.medicationId } : {};
+      await logEvent(patientId, "REMINDER", text, { data: { reminderId: r.id, dueAt: r.dueAt.toISOString(), speechId, ...medication } });
+      await logEvent(patientId, "SPOKEN", text, { data: { speechId, source: "reminder", reminderId: r.id, ...medication } });
       reminders.push({ id: r.id, text, speechId });
     }
     return Response.json({ reminders });

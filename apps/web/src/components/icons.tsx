@@ -126,6 +126,22 @@ export const LockIcon = (p: IconProps) => (
 export const LogOutIcon = (p: IconProps) => (
   <Base {...p}><path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l5 4-5 4M20 12H9" /></Base>
 );
+/** A capsule, tilted: the medication tool. */
+export const PillIcon = (p: IconProps) => (
+  <Base {...p}><rect x="8" y="2.5" width="8" height="19" rx="4" /><path d="M8 12h8" /><path d="M8 6.5a4 4 0 0 1 8 0V12H8z" fill="currentColor" stroke="none" /></Base>
+);
+export const MaximizeIcon = (p: IconProps) => (
+  <Base {...p}><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></Base>
+);
+export const MinimizeIcon = (p: IconProps) => (
+  <Base {...p}><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></Base>
+);
+export const LinkIcon = (p: IconProps) => (
+  <Base {...p}><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.5 1.5" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.5-1.5" /></Base>
+);
+export const CopyIcon = (p: IconProps) => (
+  <Base {...p}><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></Base>
+);
 export const RepeatIcon = (p: IconProps) => (
   <Base {...p}><path d="M17 2l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></Base>
 );
