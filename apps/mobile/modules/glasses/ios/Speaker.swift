@@ -33,6 +33,7 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
     super.init()
     synth.delegate = self
     NotificationCenter.default.addObserver(self, selector: #selector(routeChanged), name: AVAudioSession.routeChangeNotification, object: nil)
+    NotificationCenter.default.addObserver(self, selector: #selector(interrupted), name: AVAudioSession.interruptionNotification, object: nil)
   }
 
   // MARK: Session + route
@@ -48,7 +49,9 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
         // Built-in (or glasses-paired) mic in, A2DP out. No .allowBluetoothHFP so output stays hi-fi.
         try s.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothA2DP, .defaultToSpeaker])
       } else {
-        try s.setCategory(.playback, mode: .spokenAudio, options: [.allowBluetoothA2DP])
+        // No .allowBluetoothA2DP here: it is only valid with .playAndRecord (playback always routes to
+        // A2DP). With it, iOS rejected the whole call with -50 on every line and setActive never ran.
+        try s.setCategory(.playback, mode: .spokenAudio, options: [])
       }
       configuredForRecording = recordingActive
       try s.setActive(true)
@@ -80,6 +83,31 @@ final class Speaker: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegat
 
   @objc private func routeChanged(_ note: Notification) {
     DispatchQueue.main.async { _ = self.checkRoute() }
+  }
+
+  /// Another app (music, a call, Siri) took the audio session. An interrupted AVAudioPlayer never
+  /// reports finishing, so without this the current line stays "playing" and every later line waits
+  /// behind it forever. The interruption may never end (the other app keeps playing), so the line is
+  /// dropped at .began and the queue moves on; .ended just reactivates the session.
+  @objc private func interrupted(_ note: Notification) {
+    guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+          let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+    DispatchQueue.main.async {
+      switch type {
+      case .began:
+        guard let line = self.current else { return }
+        NSLog("[Glasses] audio interrupted by another app; dropping line: \(line.text)")
+        self.player?.stop()
+        if self.synth.isSpeaking { self.synth.stopSpeaking(at: .immediate) }  // its didCancel is a no-op once current is nil
+        self.finishCurrent()
+      case .ended:
+        NSLog("[Glasses] audio interruption ended")
+        self.configureSession()
+        self.playNextIfIdle()
+      @unknown default:
+        break
+      }
+    }
   }
 
   // MARK: Audio cache (Library/Caches/speech/<speechId>.mp3)
