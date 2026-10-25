@@ -5,6 +5,11 @@ import { NextResponse, type NextRequest } from "next/server";
 export function proxy(request: NextRequest) {
   if (request.cookies.has("recall_session")) return NextResponse.next();
   const url = request.nextUrl.clone();
+  // Visitors see the landing page at "/" (URL unchanged); signed-in users get Today there.
+  if (request.nextUrl.pathname === "/") {
+    url.pathname = "/welcome";
+    return NextResponse.rewrite(url);
+  }
   const next = request.nextUrl.pathname + request.nextUrl.search;
   url.pathname = "/login";
   url.search = next && next !== "/" ? `?next=${encodeURIComponent(next)}` : "";
@@ -14,6 +19,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Everything except API, auth pages, Next internals, and files with an extension.
-    "/((?!api/|api$|login|signup|forgot|reset|join|_next/|.*\\.[^/]+$).*)",
+    "/((?!api/|api$|login|signup|forgot|reset|join|welcome|_next/|.*\\.[^/]+$).*)",
   ],
 };
