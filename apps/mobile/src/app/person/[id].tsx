@@ -2,7 +2,8 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
-import { Avatar, Button, Group, Icon, IconButton, Notice, Row, Screen, TextButton } from '@/components/ui';
+import { HorizonMark } from '@/components/brand';
+import { Avatar, Button, Group, IconButton, Notice, Row, Screen, TextButton } from '@/components/ui';
 import { Colors, Fonts, Gutter, Radii, Spacing, Type } from '@/constants/theme';
 import { api, type Memory, type PersonDetail } from '@/lib/api';
 import { agoText, firstName, lastSeenText } from '@/lib/format';
@@ -94,7 +95,7 @@ export default function PersonScreen() {
         {error ? <Notice tone="attention" body={error} onDismiss={() => setError(null)} /> : null}
 
         {person === undefined ? (
-          <ActivityIndicator color={Colors.harbor} style={{ marginTop: Spacing.ten }} />
+          <ActivityIndicator color={Colors.dusk} style={{ marginTop: Spacing.ten }} />
         ) : person === null ? (
           <Notice tone="info" body="This person is no longer in the roster." />
         ) : (
@@ -109,7 +110,7 @@ export default function PersonScreen() {
 
             <View style={styles.quote}>
               <View style={styles.quoteHead}>
-                <Icon name="eyeglasses" size={16} color={Colors.harborDeep} weight="semibold" />
+                <HorizonMark size={18} />
                 <Text style={styles.quoteLabel}>What the glasses say</Text>
                 <View style={{ flex: 1 }} />
                 <TextButton title="Edit" onPress={() => router.push({ pathname: '/edit-person', params: { id: person.id } })} />
@@ -136,7 +137,7 @@ export default function PersonScreen() {
                     <Switch
                       value={m.useInCallout}
                       onValueChange={(on) => toggleMemory(m, on)}
-                      trackColor={{ true: Colors.harbor, false: Colors.line }}
+                      trackColor={{ true: Colors.dusk, false: Colors.line }}
                       accessibilityLabel={`Say this through the glasses: ${m.calloutText}`}
                     />
                   }
@@ -155,7 +156,7 @@ export default function PersonScreen() {
               ) : null}
               <Row
                 icon="plus"
-                iconTone="harbor"
+                iconTone="dusk"
                 title="Add a memory"
                 onPress={() => router.push({ pathname: '/edit-memory', params: { personId: person.id } })}
                 chevron
@@ -206,10 +207,10 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: Gutter, paddingTop: Spacing.four, paddingBottom: Spacing.eight, gap: Spacing.five },
   hero: { alignItems: 'center', gap: Spacing.two, paddingVertical: Spacing.two },
   name: { fontFamily: Fonts.display, fontSize: 32, lineHeight: 38, letterSpacing: -0.6, color: Colors.ink, textAlign: 'center', marginTop: Spacing.two },
-  relationship: { ...Type.headline, color: Colors.harborDeep },
-  quote: { backgroundColor: Colors.harborMist, borderRadius: Radii.md, padding: Spacing.five, paddingTop: Spacing.two, gap: Spacing.two },
+  relationship: { ...Type.headline, color: Colors.duskDeep },
+  quote: { backgroundColor: Colors.duskMist, borderRadius: Radii.md, padding: Spacing.five, paddingTop: Spacing.two, gap: Spacing.two },
   quoteHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  quoteLabel: { ...Type.secondaryBold, color: Colors.harborDeep },
+  quoteLabel: { ...Type.secondaryBold, color: Colors.duskDeep },
   quoteText: { ...Type.spoken, fontSize: 22, lineHeight: 29, color: Colors.ink },
   quietEmpty: { padding: Spacing.four, gap: Spacing.one },
   footnote: { ...Type.caption, color: Colors.inkMute, textAlign: 'center' },

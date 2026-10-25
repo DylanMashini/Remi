@@ -30,7 +30,7 @@ async function Settings() {
 
   return (
     <>
-      <PageHeader title="Settings" lead="Your account, the person the glasses speak to, and how the phone connects." />
+      <PageHeader title="Settings" lead="Your account, the person Remi speaks to, and how the phone connects." />
 
       <Group title="Account" footer={user.emailVerifiedAt ? undefined : "Your email is not verified yet. The link in the welcome email works for 48 hours."}>
         <NameForm action={updateAccountName} id="account-name" label="Your name" defaultValue={user.name} savedText="Saved." />
@@ -40,16 +40,16 @@ async function Settings() {
       </Group>
 
       <Group
-        title={self ? "The glasses speak to you" : "The person you care for"}
-        footer={`This name is how the glasses address ${self ? "you" : "them"} and how this dashboard refers to ${self ? "you" : "them"}.`}
+        title={self ? "Remi speaks to you" : "The person you care for"}
+        footer={`This name is how Remi addresses ${self ? "you" : "them"} and how this dashboard refers to ${self ? "you" : "them"}.`}
       >
         <NameForm
           action={updatePatientName}
           id="patient-name"
-          label={self ? "What the glasses should call you" : "Their name"}
+          label={self ? "What Remi should call you" : "Their name"}
           defaultValue={patientName}
           hint="A first name is enough."
-          savedText="Saved. The glasses use the new name from now on."
+          savedText="Saved. Remi uses the new name from now on."
         />
       </Group>
 
@@ -65,19 +65,19 @@ async function Settings() {
         ))}
       </Group>
 
-      <Group title="The phone and the glasses" footer="Pairing and the camera are managed in the Recall app on the phone; there is nothing to configure here.">
+      <Group title="The phone and the glasses" footer="Pairing and the camera are managed in the Remi app on the phone; there is nothing to configure here.">
         <Row
           leading={
-            <RowIcon tone="harbor" size={44}>
+            <RowIcon tone="dusk" size={44}>
               <PhoneIcon size={22} />
             </RowIcon>
           }
-          title="Sign in to the Recall app on the phone"
+          title="Sign in to the Remi app on the phone"
           detail={`Use ${user.email}. The phone keeps its own sign-in and relays between the glasses and this dashboard.`}
         />
         <Row
           leading={
-            <RowIcon tone="harbor" size={44}>
+            <RowIcon tone="dusk" size={44}>
               <GlassesIcon size={22} />
             </RowIcon>
           }

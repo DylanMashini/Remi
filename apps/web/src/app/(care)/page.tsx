@@ -4,7 +4,8 @@ import { deleteReminder } from "./actions";
 import { Avatar } from "@/components/Avatar";
 import { getCare } from "@/components/care";
 import { dayKey, formatAgo, formatDayHeading, formatShortDay, formatTime, formatWhen, greeting } from "@/components/format";
-import { BellIcon, GlassesIcon, MemoryIcon, PersonIcon, PlusIcon, SpeakerIcon, TrashIcon } from "@/components/icons";
+import { BellIcon, GlassesIcon, MemoryIcon, PersonIcon, PlusIcon, TrashIcon } from "@/components/icons";
+import { HorizonMark } from "@/components/Logo";
 import { Timeline } from "@/components/Timeline";
 import {
   buttonPrimary,
@@ -79,26 +80,29 @@ async function Today() {
 
       {peopleCount === 0 ? (
         <Notice tone="info" icon={<PersonIcon size={20} />} title="Finish setting up" action={<Link href="/start/person" className={buttonSecondary}>Add the first person</Link>}>
-          The glasses only recognize people you add. Start with the one or two people {who === "you" ? "you see" : `${patientName} sees`} most.
+          Remi only recognizes people you add. Start with the one or two people {who === "you" ? "you see" : `${patientName} sees`} most.
         </Notice>
       ) : null}
 
-      {/* The one loud thing on the page: the last words the glasses said. */}
-      <section aria-labelledby="heard" className="flex flex-col gap-4 rounded-lg bg-harbor p-6 text-white sm:p-8">
-        <h2 id="heard" className="m-0 flex items-center gap-2.5 text-[15px] font-bold text-harbor-mist">
-          <SpeakerIcon size={18} />
-          {lastSpoken ? `${self ? "You" : patientName} last heard` : `What ${who} will hear`}
-          {lastSpoken ? <span className="font-normal opacity-80">{formatWhen(lastSpoken.createdAt, now)}</span> : null}
+      {/* The one loud thing on the page: the last words Remi said, on the sky of the hour. */}
+      <section
+        aria-labelledby="heard"
+        className="flex flex-col gap-4 rounded-lg bg-sky p-6 text-ink shadow-[inset_0_-3px_0_var(--color-dusk)] sm:p-8"
+      >
+        <h2 id="heard" className="m-0 flex items-center gap-2.5 text-[15px] font-bold text-dusk-deep">
+          <HorizonMark size={22} />
+          {lastSpoken ? `Remi said to ${self ? "you" : patientName}` : `What Remi will say to ${who}`}
+          {lastSpoken ? <span className="font-normal text-ink-soft">{formatWhen(lastSpoken.createdAt, now)}</span> : null}
         </h2>
         {lastSpoken ? (
           <p className="m-0 font-display text-[28px] font-extrabold leading-[1.2] tracking-[-0.5px] sm:text-[38px]">&ldquo;{lastSpoken.text}&rdquo;</p>
         ) : (
-          <p className="m-0 font-display text-[24px] font-bold leading-snug tracking-[-0.3px] text-white/85 sm:text-[30px]">
-            Nothing spoken yet. When someone you added walks up, the glasses will say their name, your relationship, and your note.
+          <p className="m-0 font-display text-[24px] font-bold leading-snug tracking-[-0.3px] text-ink-soft sm:text-[30px]">
+            Nothing yet. When someone you added walks up, Remi will say their name, your relationship, and your note.
           </p>
         )}
         {lastSpoken ? null : (
-          <Link href="/people" className="w-fit text-[15px] font-bold text-white underline-offset-4 hover:text-white hover:underline">
+          <Link href="/people" className="w-fit text-[15px] font-bold text-dusk-deep underline-offset-4 hover:underline">
             See what each person&apos;s introduction sounds like
           </Link>
         )}
@@ -115,7 +119,7 @@ async function Today() {
             </Link>
           }
         >
-          Recall did not recognize someone and said &ldquo;Someone new is here.&rdquo; If this is someone {who === "you" ? "you" : patientName} should know, add them with a photo.
+          Remi did not recognize someone and said &ldquo;Someone new is here.&rdquo; If this is someone {who === "you" ? "you" : patientName} should know, add them with a photo.
         </Notice>
       ) : null}
 
@@ -142,12 +146,12 @@ async function Today() {
         <Group
           title="Coming up"
           action={<Link href="/reminders">Add a reminder</Link>}
-          footer={upcoming.length ? "The glasses say each one once, at its time." : undefined}
+          footer={upcoming.length ? "Remi says each one once, at its time." : undefined}
         >
           {upcoming.length === 0 ? (
             <div className="flex flex-col gap-1 px-5 py-5">
               <strong className="text-[17px]">Nothing scheduled</strong>
-              <span className="text-[15px] text-ink-soft">Add a reminder and the glasses will say it to {who} at the right moment.</span>
+              <span className="text-[15px] text-ink-soft">Add a reminder and Remi will say it to {who} at the right moment.</span>
               <Link href="/reminders" className={`${buttonSecondary} mt-3 w-fit`}>
                 <BellIcon size={18} />
                 Add a reminder
@@ -161,7 +165,7 @@ async function Today() {
                   key={r.id}
                   leading={
                     <span className="flex w-[72px] shrink-0 flex-col">
-                      <span className={`text-[15px] font-bold ${i === 0 ? "text-harbor-deep" : "text-ink-soft"}`}>{formatTime(r.dueAt)}</span>
+                      <span className={`text-[15px] font-bold ${i === 0 ? "text-dusk-deep" : "text-ink-soft"}`}>{formatTime(r.dueAt)}</span>
                       <span className="text-[13px] text-ink-mute">{dayKey(r.dueAt) === dayKey(now) ? "Today" : formatShortDay(r.dueAt)}</span>
                     </span>
                   }
@@ -207,7 +211,7 @@ async function Today() {
           )}
           <Row
             leading={
-              <RowIcon tone="harbor" size={44}>
+              <RowIcon tone="dusk" size={44}>
                 <GlassesIcon size={22} />
               </RowIcon>
             }
@@ -225,7 +229,7 @@ async function Today() {
       >
         {todayEvents.length === 0 ? (
           <EmptyState icon={<GlassesIcon size={30} />} title="A quiet day so far">
-            Moments appear here as the glasses recognize people, answer questions, and speak reminders.
+            Moments appear here as Remi recognizes people, answers questions, and speaks reminders.
             {latest ? ` The last one was ${formatAgo(latest.createdAt, now).toLowerCase()}.` : ""}
           </EmptyState>
         ) : (

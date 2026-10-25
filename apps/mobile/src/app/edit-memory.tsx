@@ -6,7 +6,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
-import { Button, Field, Group, Icon, Notice, Row, Screen, SheetHeader } from '@/components/ui';
+import { HorizonMark } from '@/components/brand';
+import { Button, Field, Group, Notice, Row, Screen, SheetHeader } from '@/components/ui';
 import { Colors, Gutter, Radii, Spacing, Type } from '@/constants/theme';
 import { api, type Memory } from '@/lib/api';
 import { errorMessage } from '@/lib/glasses';
@@ -96,8 +97,8 @@ export default function EditMemoryScreen() {
           {callout.trim() || text.trim() ? (
             <View style={styles.preview}>
               <View style={styles.previewHead}>
-                <Icon name="eyeglasses" size={16} color={Colors.harborDeep} weight="semibold" />
-                <Text style={[Type.secondaryBold, { color: Colors.harborDeep }]}>
+                <HorizonMark size={18} />
+                <Text style={[Type.secondaryBold, { color: Colors.duskDeep }]}>
                   {on ? 'After the introduction, the glasses can say' : 'Kept, but not spoken'}
                 </Text>
               </View>
@@ -125,10 +126,10 @@ export default function EditMemoryScreen() {
           <Group>
             <Row
               icon="speaker.wave.2.fill"
-              iconTone="harbor"
+              iconTone="dusk"
               title="Say this through the glasses"
               detail="The newest memory that is on is spoken."
-              trailing={<Switch value={on} onValueChange={setOn} trackColor={{ true: Colors.harbor, false: Colors.line }} accessibilityLabel="Say this through the glasses" />}
+              trailing={<Switch value={on} onValueChange={setOn} trackColor={{ true: Colors.dusk, false: Colors.line }} accessibilityLabel="Say this through the glasses" />}
             />
           </Group>
 
@@ -144,7 +145,7 @@ export default function EditMemoryScreen() {
 
 const styles = StyleSheet.create({
   scroll: { paddingHorizontal: Gutter, paddingBottom: Spacing.eight, gap: Spacing.four },
-  preview: { backgroundColor: Colors.harborMist, borderRadius: Radii.md, padding: Spacing.five, gap: Spacing.two },
+  preview: { backgroundColor: Colors.duskMist, borderRadius: Radii.md, padding: Spacing.five, gap: Spacing.two },
   previewHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   previewText: { ...Type.spoken, fontSize: 22, lineHeight: 29, color: Colors.ink },
 });

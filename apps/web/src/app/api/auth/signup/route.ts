@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   const email = normalizeEmail(body.email);
   const password = typeof body.password === "string" ? body.password : "";
   const name = str(body.name);
-  // "wearer" = setting Recall up for themselves (they are the patient); default is a caregiver.
+  // "wearer" = setting Remi up for themselves (they are the patient); default is a caregiver.
   const role: UserRole = str(body.role).toLowerCase() === "wearer" ? "WEARER" : "CAREGIVER";
   const patientName = role === "WEARER" ? str(body.patientName) || name : str(body.patientName);
 

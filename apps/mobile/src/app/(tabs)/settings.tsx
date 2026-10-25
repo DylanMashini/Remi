@@ -133,7 +133,7 @@ export default function SettingsScreen() {
         <Group
           title="Recognition"
           footer="A small face model runs on this phone. Each camera frame is matched here and discarded; only who was seen goes to the memory log. No picture ever leaves the phone.">
-          <Row icon="iphone" iconTone="harbor" title="Faces are recognized on this phone" detail={rosterText} />
+          <Row icon="iphone" iconTone="dusk" title="Faces are recognized on this phone" detail={rosterText} />
           <View style={styles.buttons}>
             <Button
               title="Refresh people"
@@ -159,7 +159,7 @@ export default function SettingsScreen() {
             <View>
               <Row
                 icon="photo.on.rectangle"
-                iconTone={indexDenied ? 'attention' : 'harbor'}
+                iconTone={indexDenied ? 'attention' : 'dusk'}
                 title="Photo library"
                 detail={photoIndexDetail(photoIndex)}
               />
@@ -201,9 +201,9 @@ export default function SettingsScreen() {
         </Group>
 
         <Group title="Privacy" footer="These are built in, not settings. They cannot be turned off.">
-          <Row icon="person.2" iconTone="harbor" title="Only people you add are recognized" detail="No search of strangers, ever." />
-          <Row icon="eye.slash" iconTone="harbor" title="Camera frames never leave the phone" detail="Each frame is matched on the phone and discarded." />
-          <Row icon="trash" iconTone="harbor" title="You can delete any moment" detail="Touch and hold a moment in Today." />
+          <Row icon="person.2" iconTone="dusk" title="Only people you add are recognized" detail="No search of strangers, ever." />
+          <Row icon="eye.slash" iconTone="dusk" title="Camera frames never leave the phone" detail="Each frame is matched on the phone and discarded." />
+          <Row icon="trash" iconTone="dusk" title="You can delete any moment" detail="Touch and hold a moment in Today." />
         </Group>
 
         <Group title="About">
@@ -229,5 +229,5 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.one,
     overflow: 'hidden',
   },
-  progressFill: { height: '100%', borderRadius: 2, backgroundColor: Colors.harbor },
+  progressFill: { height: '100%', borderRadius: 2, backgroundColor: Colors.dusk },
 });

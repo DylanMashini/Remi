@@ -61,7 +61,7 @@ async function post(url: string, body: unknown): Promise<{ ok: boolean; status: 
     const data = (await res.json().catch(() => null)) as { error?: string } | null;
     return { ok: false, status: res.status, error: data?.error ?? "Something went wrong. Try again." };
   } catch {
-    return { ok: false, status: 0, error: "Could not reach Recall. Check your connection and try again." };
+    return { ok: false, status: 0, error: "Could not reach Remi. Check your connection and try again." };
   }
 }
 
@@ -111,7 +111,7 @@ export function LoginForm() {
       <Submit busy={busy}>Sign in</Submit>
       <div className="flex flex-wrap items-center justify-between gap-2 text-[16px]">
         <FooterLink href="/forgot">Forgot password?</FooterLink>
-        <FooterLink href="/signup">Set up Recall</FooterLink>
+        <FooterLink href="/signup">Set up Remi</FooterLink>
       </div>
     </form>
   );
@@ -140,7 +140,7 @@ export function SignupForm({ role }: { role: "caregiver" | "wearer" }) {
     <form onSubmit={onSubmit} className="flex flex-col gap-5">
       <FormStatus error={error} />
       {caregiver ? (
-        <Field label="Who will wear the glasses?" htmlFor="patientName" hint="Their first name is enough. This is how the glasses address them.">
+        <Field label="Who will wear the glasses?" htmlFor="patientName" hint="Their first name is enough. This is how Remi addresses them.">
           <input
             id="patientName"
             name="patientName"

@@ -6,7 +6,7 @@ import { SignupForm } from "../_components/forms";
 import { ArrowLeftIcon, PeopleIcon, PersonIcon } from "@/components/icons";
 import { ChoiceCard, Skeleton } from "@/components/ui";
 
-export const metadata: Metadata = { title: "Set up Recall" };
+export const metadata: Metadata = { title: "Set up Remi" };
 
 export default function SignupPage({ searchParams }: PageProps<"/signup">) {
   return (
@@ -25,14 +25,14 @@ async function Signup({ searchParams }: { searchParams: Promise<Record<string, s
       <>
         <AuthHeading
           title="Who will wear the glasses?"
-          lead="This shapes how Recall speaks and what you see here. You can add family later."
+          lead="This shapes how Remi speaks and what you see here. You can add family later."
         />
         <div className="flex flex-col gap-3">
           <ChoiceCard href="/signup?role=caregiver" icon={<PeopleIcon size={24} />} title="Someone I care for">
             I am a family member or caregiver. I will manage people and reminders for them.
           </ChoiceCard>
           <ChoiceCard href="/signup?role=wearer" icon={<PersonIcon size={24} />} title="I will">
-            I am setting Recall up for myself.
+            I am setting Remi up for myself.
           </ChoiceCard>
         </div>
         <p className="m-0 mt-6 text-[16px] text-ink-soft">
@@ -55,8 +55,8 @@ async function Signup({ searchParams }: { searchParams: Promise<Record<string, s
         title={picked === "caregiver" ? "Set up for someone" : "Set up for yourself"}
         lead={
           picked === "caregiver"
-            ? "You get a caregiver account. The glasses speak to them; this dashboard and the phone are yours."
-            : "Your account is for you. The glasses will speak to you, and this dashboard shows what they say."
+            ? "You get a caregiver account. Remi speaks to them; this dashboard and the phone are yours."
+            : "Your account is for you. Remi will speak to you, and this dashboard shows what it says."
         }
       />
       <SignupForm role={picked} />

@@ -5,7 +5,7 @@ import { errorResponse, HttpError, readJson } from "../../_lib/http";
 
 type Params = { params: Promise<{ id: string }> };
 
-/** Edit a memory's words, its spoken sentence, or whether the glasses say it. */
+/** Edit a memory's words, its spoken sentence, or whether Remi says it. */
 export async function PATCH(req: Request, { params }: Params) {
   try {
     const { patientId } = await requireSession(req);

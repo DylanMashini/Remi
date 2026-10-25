@@ -57,7 +57,7 @@ async function Remember() {
 
       <dl className="m-0 grid gap-4 sm:grid-cols-3">
         <Stat label="Visits this week" value={weekVisits.length} detail={lastVisit ? `Last one ${formatAgo(lastVisit.createdAt, now).toLowerCase()}` : people ? "None yet" : "Add someone first"} />
-        <Stat label="Knew right away" value={weekVisits.length ? `${weekKnew} of ${weekVisits.length}` : "—"} detail={weekVisits.length ? "this week" : "no visits yet"} tone="harbor" />
+        <Stat label="Knew right away" value={weekVisits.length ? `${weekKnew} of ${weekVisits.length}` : "—"} detail={weekVisits.length ? "this week" : "no visits yet"} tone="dusk" />
         <Stat label="New memories" value={weekMemories} detail="this week" tone="apricot" />
       </dl>
 
@@ -82,7 +82,7 @@ async function Remember() {
                     </>
                   }
                   detail={
-                    <span className={`inline-flex items-center gap-1.5 ${knew ? "font-bold text-harbor-deep" : ""}`}>
+                    <span className={`inline-flex items-center gap-1.5 ${knew ? "font-bold text-dusk-deep" : ""}`}>
                       {knew ? <CheckIcon size={14} /> : <SpeakerIcon size={14} />}
                       {knew ? "Knew right away" : "Heard the introduction"}
                     </span>
@@ -106,12 +106,12 @@ async function Remember() {
               <div key={m.id} className="flex flex-col gap-2 px-4 py-4">
                 <div className="flex items-center gap-2.5">
                   <Avatar name={m.person.name} avatarFileId={m.person.avatarFileId} size={28} />
-                  <Link href={`/people/${m.person.id}`} className="text-[15px] font-bold text-ink hover:text-harbor-deep">
+                  <Link href={`/people/${m.person.id}`} className="text-[15px] font-bold text-ink hover:text-dusk-deep">
                     {m.person.name}
                   </Link>
                   <span className="ml-auto text-[13px] text-ink-mute">{formatAgo(m.createdAt, now)}</span>
                 </div>
-                <p className={`m-0 font-display text-[18px] font-bold leading-snug tracking-[-0.2px] ${m.useInCallout ? "text-harbor-deep" : "text-ink-soft"}`}>&ldquo;{m.calloutText}&rdquo;</p>
+                <p className={`m-0 font-display text-[18px] font-bold leading-snug tracking-[-0.2px] ${m.useInCallout ? "text-dusk-deep" : "text-ink-soft"}`}>&ldquo;{m.calloutText}&rdquo;</p>
                 <span className="flex items-center gap-1.5 text-[13px] text-ink-mute">
                   {m.useInCallout ? <SpeakerIcon size={14} /> : <MemoryIcon size={14} />}
                   {m.useInCallout ? "Switched on" : "Kept, not spoken"}
@@ -125,8 +125,8 @@ async function Remember() {
   );
 }
 
-function Stat({ label, value, detail, tone = "sand" }: { label: string; value: string | number; detail: string; tone?: "sand" | "harbor" | "apricot" }) {
-  const bg = { sand: "bg-surface", harbor: "bg-harbor-mist", apricot: "bg-apricot-mist" }[tone];
+function Stat({ label, value, detail, tone = "sand" }: { label: string; value: string | number; detail: string; tone?: "sand" | "dusk" | "apricot" }) {
+  const bg = { sand: "bg-surface", dusk: "bg-dusk-mist", apricot: "bg-apricot-mist" }[tone];
   return (
     <div className={`flex flex-col gap-1 rounded-md px-6 py-5 ${bg}`}>
       <dt className="text-[15px] text-ink-soft">{label}</dt>

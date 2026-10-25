@@ -29,11 +29,11 @@ async function StartReminder() {
   return (
     <>
       <PageHeader
-        title={upcoming.length ? "Another reminder?" : "What should the glasses remind them of?"}
+        title={upcoming.length ? "Another reminder?" : "What should Remi remind them of?"}
         lead={
           upcoming.length
             ? `${upcoming.length === 1 ? "One reminder is" : `${upcoming.length} reminders are`} scheduled. Add another, or continue.`
-            : `Reminders are spoken through the glasses at the time you choose, in one calm sentence. Try one for a few minutes from now so ${who} can hear how it sounds.`
+            : `Remi says each reminder through the glasses at the time you choose, in one calm sentence. Try one for a few minutes from now so ${who} can hear how it sounds.`
         }
       >
         {upcoming.length ? (
@@ -51,7 +51,7 @@ async function StartReminder() {
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {upcoming.map((r) => (
             <li key={r.id} className="flex items-center gap-3.5 rounded-md bg-surface px-4 py-3">
-              <RowIcon tone="harbor">
+              <RowIcon tone="dusk">
                 <BellIcon size={18} />
               </RowIcon>
               <div className="flex min-w-0 flex-1 flex-col">

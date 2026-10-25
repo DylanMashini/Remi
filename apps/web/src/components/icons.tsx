@@ -104,6 +104,10 @@ export const EyeOffIcon = (p: IconProps) => (
 export const SunIcon = (p: IconProps) => (
   <Base {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></Base>
 );
+/** The brand's own glyph for Today: a sun half-risen over the horizon. */
+export const SunriseIcon = (p: IconProps) => (
+  <Base {...p}><path d="M5 15a7 7 0 0 1 14 0" /><path d="M2 19h20M12 3v3M4.2 7.2l2.1 2.1M19.8 7.2l-2.1 2.1" /></Base>
+);
 export const HeartIcon = (p: IconProps) => (
   <Base {...p}><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" /></Base>
 );

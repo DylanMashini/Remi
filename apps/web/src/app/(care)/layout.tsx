@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { getCare } from "@/components/care";
 import { PrivacyFooter } from "@/components/Footer";
-import { LogoMark, Wordmark } from "@/components/Logo";
+import { Wordmark } from "@/components/Logo";
 import { SideNav, TabBar } from "@/components/NavLinks";
 import { SignOutButton } from "@/components/SignOutButton";
 import { buttonText } from "@/components/ui";
@@ -28,17 +28,16 @@ export default function CareLayout({ children }: LayoutProps<"/">) {
     <div className="flex min-h-dvh flex-col md:flex-row">
       {/* Phone: slim top bar. Desktop: sidebar. */}
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-sand bg-surface px-4 py-2.5 md:hidden">
-        <Link href="/" className="flex items-center gap-2.5 text-ink no-underline hover:text-ink">
-          <LogoMark size={30} />
-          <span className="font-display text-[20px] font-extrabold tracking-tight">Recall</span>
+        <Link href="/" className="flex items-center no-underline" aria-label="Remi home">
+          <Wordmark size={26} />
         </Link>
         <Link href="/live" className="text-[15px] font-bold">
           Live view
         </Link>
       </header>
       <aside className="hidden md:sticky md:top-0 md:flex md:h-dvh md:w-[248px] md:shrink-0 md:flex-col md:gap-7 md:border-r md:border-sand md:bg-surface md:px-4 md:py-7">
-        <Link href="/" className="px-3 no-underline">
-          <Wordmark />
+        <Link href="/" className="px-3 no-underline" aria-label="Remi home">
+          <Wordmark size={30} />
         </Link>
         {/* usePathname suspends while the shell for dynamic routes (/people/[id]) is prerendered. */}
         <Suspense fallback={<div className="h-[380px]" aria-hidden="true" />}>

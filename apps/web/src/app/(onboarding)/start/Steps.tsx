@@ -26,7 +26,7 @@ export function Steps() {
             <span
               aria-current={active ? "step" : undefined}
               className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-pill text-[14px] ${
-                done ? "bg-harbor text-white" : active ? "bg-harbor-mist text-harbor-deep" : "bg-sand text-ink-mute"
+                done ? "bg-dusk text-white" : active ? "bg-dusk-mist text-dusk-deep" : "bg-sand text-ink-mute"
               }`}
             >
               {done ? <CheckIcon size={16} /> : i + 1}

@@ -3,7 +3,10 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Button, EmptyState, Group, Icon, IconButton, Notice, PressableScale, Row, Screen, ScreenHeader } from '@/components/ui';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { Sky } from '@/components/brand';
+import { Button, EmptyState, Group, Icon, IconButton, Notice, PressableScale, Row, Screen } from '@/components/ui';
 import { Colors, Fonts, Gutter, Radii, Spacing, Type } from '@/constants/theme';
 import { api, type EventJson, type Reminder } from '@/lib/api';
 import { longDate, startOfToday, timeOf, whenText } from '@/lib/format';
@@ -12,18 +15,18 @@ import { useSession, wearerName } from '@/lib/session';
 
 const SHOWN: EventJson['type'][] = ['RECOGNITION', 'UNKNOWN', 'QUESTION', 'ANSWER', 'REMINDER', 'PRACTICE'];
 
-function describe(e: EventJson, who: string): { icon: SFSymbol; tone: 'harbor' | 'apricot' | 'sand'; title: string } {
+function describe(e: EventJson, who: string): { icon: SFSymbol; tone: 'dusk' | 'apricot' | 'sand'; title: string } {
   switch (e.type) {
     case 'RECOGNITION':
       return { icon: 'person.fill.checkmark', tone: 'apricot', title: e.personName ? `${e.personName} was here` : 'Someone familiar was here' };
     case 'UNKNOWN':
       return { icon: 'person.fill.questionmark', tone: 'sand', title: 'Someone new was here' };
     case 'QUESTION':
-      return { icon: 'bubble.left.fill', tone: 'harbor', title: e.data?.repeat ? `${capitalize(who)} asked again` : `${capitalize(who)} asked` };
+      return { icon: 'bubble.left.fill', tone: 'dusk', title: e.data?.repeat ? `${capitalize(who)} asked again` : `${capitalize(who)} asked` };
     case 'ANSWER':
-      return { icon: 'eyeglasses', tone: 'harbor', title: 'The glasses answered' };
+      return { icon: 'eyeglasses', tone: 'dusk', title: 'The glasses answered' };
     case 'REMINDER':
-      return { icon: 'bell.fill', tone: 'harbor', title: 'Reminder spoken' };
+      return { icon: 'bell.fill', tone: 'dusk', title: 'Reminder spoken' };
     case 'PRACTICE': {
       const name = e.personName ?? 'someone';
       if (e.data?.kind === 'memory') {
@@ -48,6 +51,7 @@ function capitalize(s: string): string {
 
 export default function TodayScreen() {
   const { token, account } = useSession();
+  const insets = useSafeAreaInsets();
   const who = wearerName(account);
   const [events, setEvents] = useState<EventJson[] | null>(null);
   const [reminders, setReminders] = useState<Reminder[] | null>(null);
@@ -117,17 +121,26 @@ export default function TodayScreen() {
   };
 
   return (
-    <Screen edges={['top']}>
+    <Screen edges={[]}>
       <ScrollView
         contentContainerStyle={styles.scroll}
-        contentInsetAdjustmentBehavior="automatic"
+        contentInsetAdjustmentBehavior="never"
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.harbor} />}>
-        <ScreenHeader
-          eyebrow={longDate()}
-          title="Today"
-          action={<IconButton name="plus" label="Add a reminder" onPress={() => router.push('/add-reminder')} tone="harbor" />}
-        />
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.dusk} progressViewOffset={insets.top} />}>
+        {/* The one place on this screen that carries the brand: today's sky, down to the horizon. */}
+        <Sky style={[styles.sky, { paddingTop: insets.top + Spacing.three }]}>
+          <View style={styles.skyInner}>
+            <View style={{ flex: 1, gap: Spacing.one }}>
+              <Text style={[Type.secondary, { color: Colors.inkSoft }]}>{longDate()}</Text>
+              <Text style={[Type.display, { color: Colors.ink }]} accessibilityRole="header">
+                Today
+              </Text>
+            </View>
+            <View style={{ paddingTop: Spacing.one }}>
+              <IconButton name="plus" label="Add a reminder" onPress={() => router.push('/add-reminder')} tone="dusk" />
+            </View>
+          </View>
+        </Sky>
 
         {error ? <Notice tone="attention" title="Today didn't load" body={error} onDismiss={() => setError(null)} /> : null}
 
@@ -217,8 +230,10 @@ function isToday(iso: string): boolean {
 
 const styles = StyleSheet.create({
   scroll: { paddingHorizontal: Gutter, paddingBottom: Spacing.ten, gap: Spacing.five },
+  sky: { marginHorizontal: -Gutter, paddingHorizontal: Gutter, paddingBottom: Spacing.five + 2 },
+  skyInner: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.four },
   time: { width: 72, gap: 1 },
-  timeText: { ...Type.secondaryBold, color: Colors.harborDeep },
+  timeText: { ...Type.secondaryBold, color: Colors.duskDeep },
   timeSub: { ...Type.caption, color: Colors.inkMute },
   quietEmpty: { padding: Spacing.five, gap: Spacing.one },
   invite: {

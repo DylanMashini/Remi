@@ -117,14 +117,14 @@ export function EnrollForm({
 
   if (status.kind === "done") {
     return (
-      <div className="flex flex-col gap-5 rounded-md bg-harbor-mist p-6" role="status">
+      <div className="flex flex-col gap-5 rounded-md bg-dusk-mist p-6" role="status">
         <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-pill bg-harbor text-white">
+          <span className="flex h-11 w-11 items-center justify-center rounded-pill bg-dusk text-white">
             <CheckIcon size={22} />
           </span>
           <strong className="font-display text-[22px] tracking-[-0.3px]">{status.name} is added</strong>
         </div>
-        <p className="m-0 text-[17px] text-ink">The glasses will introduce them the next time they walk up.</p>
+        <p className="m-0 text-[17px] text-ink">Remi will introduce them the next time they walk up.</p>
         <div className="flex flex-wrap gap-3">
           <Link href={`/people/${status.id}`} className={buttonSecondary}>
             Open {status.name.split(" ")[0]}
@@ -161,7 +161,7 @@ export function EnrollForm({
           ))}
           {photos.length < MAX_PHOTOS ? (
             <label
-              className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-[1.5px] border-dashed border-line bg-linen text-center text-[14px] font-bold text-ink-soft hover:border-harbor hover:text-harbor-deep"
+              className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-2 rounded-md border-[1.5px] border-dashed border-line bg-linen text-center text-[14px] font-bold text-ink-soft hover:border-dusk hover:text-dusk-deep"
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
@@ -197,13 +197,13 @@ export function EnrollForm({
           <input id="enroll-rel" value={relationship} onChange={(e) => setRelationship(e.target.value)} maxLength={100} autoComplete="off" placeholder="daughter" className={inputClass} />
         </Field>
       </div>
-      <Field label="A warm note" htmlFor="enroll-notes" hint="Read aloud through the glasses after the name. One short sentence.">
+      <Field label="A warm note" htmlFor="enroll-notes" hint="Remi reads it aloud after the name. One short sentence.">
         <input id="enroll-notes" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={160} autoComplete="off" placeholder="She visits every Sunday." className={inputClass} />
       </Field>
 
       {preview ? (
-        <div className="flex flex-col gap-1.5 rounded-md bg-harbor-mist px-5 py-4">
-          <span className="text-[15px] font-bold text-harbor-deep">{self ? "You will hear" : `${patientName} will hear`}</span>
+        <div className="flex flex-col gap-1.5 rounded-md bg-dusk-mist px-5 py-4">
+          <span className="text-[15px] font-bold text-dusk-deep">{self ? "You will hear" : `${patientName} will hear`}</span>
           <Spoken size="sm">{preview}</Spoken>
         </div>
       ) : null}

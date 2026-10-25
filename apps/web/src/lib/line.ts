@@ -1,5 +1,5 @@
 /**
- * The words the glasses say. Face matching happens on the phone (Core ML in
+ * The words Remi says. Face matching happens on the phone (Core ML in
  * `apps/mobile/modules/glasses`); the server only builds the sentence and logs the moment.
  */
 

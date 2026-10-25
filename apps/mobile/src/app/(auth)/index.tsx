@@ -1,27 +1,27 @@
 import { router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Body, Button, Icon, Screen, TextButton, Wordmark } from '@/components/ui';
+import { HorizonMark, Wordmark } from '@/components/brand';
+import { Body, Button, Screen, TextButton } from '@/components/ui';
 import { Colors, Fonts, Gutter, Spacing } from '@/constants/theme';
 import { BACKEND_URL } from '@/lib/session';
 
+/** First screen. The one sunrise in the app: the mark comes up once, then everything is still. */
 export default function Welcome() {
   return (
     <Screen edges={['top', 'bottom']}>
       <View style={styles.top}>
-        <Wordmark size={26} />
+        <Wordmark size={28} />
       </View>
 
       <View style={styles.hero}>
-        <View style={styles.mark}>
-          <Icon name="eyeglasses" size={44} color={Colors.surface} weight="regular" />
-        </View>
+        <HorizonMark size={120} state="rising" style={{ marginBottom: Spacing.four }} />
         <Text style={styles.headline} accessibilityRole="header">
           A name, a face,{'\n'}a gentle reminder.
         </Text>
         <Body color={Colors.inkSoft} style={{ maxWidth: 320 }}>
-          Recall lives in a pair of glasses. It quietly says who is here, what was just said, and
-          what comes next.
+          Remi lives in a pair of glasses. It quietly says who is here, what was just said, and what
+          comes next.
         </Body>
       </View>
 
@@ -47,15 +47,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Gutter,
     gap: Spacing.five,
-  },
-  mark: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: Colors.harbor,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.two,
   },
   headline: {
     fontFamily: Fonts.display,

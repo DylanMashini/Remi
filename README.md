@@ -1,6 +1,8 @@
-# Memory Aid
+# Remi
 
-Dementia memory aid built on Meta Ray-Ban glasses. pnpm monorepo:
+Remi is a memory companion for people living with dementia, built on Meta Ray-Ban glasses. It
+says who is here, what was just said, and what comes next. Brand rules are in `CLAUDE.md`. pnpm
+monorepo:
 
 | Path | What |
 | --- | --- |

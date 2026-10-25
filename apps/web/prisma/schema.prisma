@@ -27,7 +27,7 @@ enum UserRole {
   WEARER
 }
 
-/// A login. Each user belongs to one patient: a caregiver setting Recall up for someone else,
+/// A login. Each user belongs to one patient: a caregiver setting Remi up for someone else,
 /// or the wearer setting it up for themselves (in which case they are also the patient).
 model User {
   id              String    @id @default(cuid())

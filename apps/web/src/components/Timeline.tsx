@@ -14,7 +14,7 @@ export type TimelineEvent = {
 };
 
 /**
- * The memory log as a list of moments with a time rail. Every row can be deleted: only moments
+ * The memory log as a list of moments with a time rail. Lines Remi said are quoted in dusk. Every row can be deleted: only moments
  * are kept (never frames), and the caregiver decides which moments stay.
  */
 export function Timeline({ events, patientName, deletable = true }: { events: TimelineEvent[]; patientName: string; deletable?: boolean }) {
@@ -24,7 +24,7 @@ export function Timeline({ events, patientName, deletable = true }: { events: Ti
         const spoken = e.type === "SPOKEN";
         return (
           <li key={e.id} className="flex items-start gap-3 px-4 py-3.5 sm:gap-4">
-            <time dateTime={e.createdAt.toISOString()} className="w-[64px] shrink-0 pt-2 text-[15px] font-bold tabular-nums text-harbor-deep sm:w-[76px]">
+            <time dateTime={e.createdAt.toISOString()} className="w-[64px] shrink-0 pt-2 text-[15px] font-bold tabular-nums text-dusk-deep sm:w-[76px]">
               {formatTime(e.createdAt)}
             </time>
             <EventIcon type={e.type} size={36} />
@@ -33,7 +33,7 @@ export function Timeline({ events, patientName, deletable = true }: { events: Ti
                 <span className="text-[15px] font-bold text-ink-soft">{eventTitle(e.type, patientName, e.person?.name, e.data)}</span>
                 {e.type === "QUESTION" && isRepeat(e.data) ? <Chip tone="attention">Asked again</Chip> : null}
               </div>
-              <p className={`m-0 break-words ${spoken ? "font-display text-[18px] font-bold leading-snug text-harbor-deep" : "text-[17px] leading-snug text-ink"}`}>
+              <p className={`m-0 break-words ${spoken ? "font-display text-[18px] font-bold leading-snug text-dusk-deep" : "text-[17px] leading-snug text-ink"}`}>
                 {spoken ? <>&ldquo;{e.text}&rdquo;</> : e.text}
               </p>
             </div>

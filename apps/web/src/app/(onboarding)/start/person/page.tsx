@@ -26,11 +26,11 @@ async function StartPerson() {
   return (
     <>
       <PageHeader
-        title={people.length ? "Add someone else?" : `Who should the glasses know first?`}
+        title={people.length ? "Add someone else?" : `Who should Remi know first?`}
         lead={
           people.length
             ? `${people.length === 1 ? "One person is" : `${people.length} people are`} added. Add another, or continue to reminders.`
-            : `Start with the person ${who === "you" ? "you see" : `${patientName} sees`} most. One to three photos and a name is all it takes. The glasses will only ever recognize the people on this list.`
+            : `Start with the person ${who === "you" ? "you see" : `${patientName} sees`} most. One to three photos and a name is all it takes. Remi will only ever recognize the people on this list.`
         }
       >
         {people.length ? (

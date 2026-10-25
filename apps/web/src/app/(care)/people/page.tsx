@@ -32,8 +32,8 @@ async function People() {
         title="People"
         lead={
           people.length
-            ? `Recall recognizes ${people.length === 1 ? "one person" : `these ${people.length} people`}, and no one else. Open someone to change what the glasses say about them.`
-            : `The people ${who === "you" ? "you see" : `${patientName} sees`} most. The glasses only recognize who is on this list.`
+            ? `Remi recognizes ${people.length === 1 ? "one person" : `these ${people.length} people`}, and no one else. Open someone to change what Remi says about them.`
+            : `The people ${who === "you" ? "you see" : `${patientName} sees`} most. Remi only recognizes who is on this list.`
         }
       >
         <Link href="/people/new" className={buttonPrimary}>
@@ -72,9 +72,9 @@ async function People() {
                   </span>
                 </div>
               </Link>
-              <div className="flex items-start gap-3 border-t border-hairline bg-harbor-mist/60 px-5 py-4">
+              <div className="flex items-start gap-3 border-t border-hairline bg-dusk-mist/60 px-5 py-4">
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <span className="text-[13px] font-bold text-harbor-deep">{who === "you" ? "You hear" : `${patientName} hears`}</span>
+                  <span className="text-[13px] font-bold text-dusk-deep">{who === "you" ? "You hear" : `${patientName} hears`}</span>
                   <Spoken size="sm">{p.line}</Spoken>
                 </div>
                 <HearPreview text={p.line} />

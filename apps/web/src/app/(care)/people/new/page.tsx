@@ -28,7 +28,7 @@ async function NewPerson() {
         </Link>
         <PageHeader
           title="Add a person"
-          lead={`The glasses introduce people by name, then relationship, then your note, then the newest memory ${self ? "you share" : `${patientName} shares`} about them. Faces are matched only against the people you add here.`}
+          lead={`Remi introduces people by name, then relationship, then your note, then the newest memory ${self ? "you share" : `${patientName} shares`} about them. Faces are matched only against the people you add here.`}
         />
       </div>
       <Card>

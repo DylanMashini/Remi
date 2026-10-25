@@ -32,13 +32,13 @@ async function Privacy() {
     <>
       <PageHeader
         title="Privacy"
-        lead="These are built in, not settings. They cannot be turned off, and this page shows exactly what Recall keeps so you can check it yourself."
+        lead="These are built in, not settings. They cannot be turned off, and this page shows exactly what Remi keeps so you can check it yourself."
       />
 
       <Group title="How recognition works">
         <Row
           leading={
-            <RowIcon tone="harbor" size={44}>
+            <RowIcon tone="dusk" size={44}>
               <PeopleIcon size={22} />
             </RowIcon>
           }
@@ -48,7 +48,7 @@ async function Privacy() {
         />
         <Row
           leading={
-            <RowIcon tone="harbor" size={44}>
+            <RowIcon tone="dusk" size={44}>
               <EyeOffIcon size={22} />
             </RowIcon>
           }
@@ -57,7 +57,7 @@ async function Privacy() {
         />
         <Row
           leading={
-            <RowIcon tone="harbor" size={44}>
+            <RowIcon tone="dusk" size={44}>
               <TrashIcon size={22} />
             </RowIcon>
           }
@@ -67,7 +67,7 @@ async function Privacy() {
         />
       </Group>
 
-      <Group title={`What Recall keeps for ${who === "you" ? "you" : patientName}`} footer="Counts are live. Nothing else is stored: no frames, no audio recordings, no location.">
+      <Group title={`What Remi keeps for ${who === "you" ? "you" : patientName}`} footer="Counts are live. Nothing else is stored: no frames, no audio recordings, no location.">
         <Row title="People on the roster" value={String(people)} valueTone="mute" href="/people" />
         <Row
           title="Enrollment photos"
@@ -75,14 +75,14 @@ async function Privacy() {
           value={String(photos)}
           valueTone="mute"
         />
-        <Row title="Memories" detail="Kept in the speaker's own words, plus the one sentence the glasses may say." value={String(memories)} valueTone="mute" href="/remember" />
+        <Row title="Memories" detail="Kept in the speaker's own words, plus the one sentence Remi may say." value={String(memories)} valueTone="mute" href="/remember" />
         <Row title="Moments in the log" detail="Recognitions, questions, answers, reminders and every spoken line, each with a timestamp." value={String(events)} valueTone="mute" href="/insights" />
       </Group>
 
       <Group title="Voice and conversation">
         <Row
           leading={
-            <RowIcon tone="harbor" size={44}>
+            <RowIcon tone="dusk" size={44}>
               <ShieldIcon size={22} />
             </RowIcon>
           }
@@ -91,7 +91,7 @@ async function Privacy() {
         />
         <Row
           leading={
-            <RowIcon tone="harbor" size={44}>
+            <RowIcon tone="dusk" size={44}>
               <LockIcon size={22} />
             </RowIcon>
           }

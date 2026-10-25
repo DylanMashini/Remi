@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EventIcon, eventTitle, isRepeat, type EventJson } from "../events";
 import { capitalize, formatTime, initials } from "../format";
-import { ArrowLeftIcon, ShieldIcon, SpeakerIcon } from "../icons";
-import { LogoMark } from "../Logo";
+import { ArrowLeftIcon, ShieldIcon } from "../icons";
+import { HorizonMark, Wordmark } from "../Logo";
 
 type PersonInfo = { id: string; name: string; relationship: string | null; notes: string | null; avatarUrl: string | null };
 type Conn = "connecting" | "live" | "reconnecting" | "signed-out";
@@ -148,17 +148,14 @@ export function LiveView({ patientName }: { patientName: string }) {
         >
           <ArrowLeftIcon size={18} />
         </Link>
-        <span className="flex items-center gap-3">
-          <LogoMark size={36} />
-          <span className="font-display text-2xl font-extrabold tracking-tight">Recall</span>
-        </span>
+        <Wordmark size={32} />
         <span
           className={`inline-flex items-center gap-2 rounded-pill px-3.5 py-1.5 text-base font-bold ${
-            conn === "live" ? "bg-harbor-mist text-harbor-deep" : "bg-attention-bg text-attention"
+            conn === "live" ? "bg-dusk-mist text-dusk-deep" : "bg-attention-bg text-attention"
           }`}
         >
           <span
-            className={`h-2.5 w-2.5 rounded-pill ${conn === "live" ? "animate-pulse-dot bg-harbor" : "bg-attention"}`}
+            className={`h-2.5 w-2.5 rounded-pill ${conn === "live" ? "animate-pulse-dot bg-dusk" : "bg-attention"}`}
             aria-hidden="true"
           />
           {connLabel}
@@ -179,23 +176,23 @@ export function LiveView({ patientName }: { patientName: string }) {
           <div className="flex min-h-0 flex-col gap-5 lg:gap-8">
             <section
               aria-live="polite"
-              className="flex min-h-[220px] flex-1 flex-col justify-center gap-5 rounded-lg bg-harbor p-7 text-white lg:p-12"
+              className="flex min-h-[220px] min-w-0 flex-1 flex-col justify-center gap-5 overflow-hidden rounded-lg bg-sky p-7 text-ink shadow-[inset_0_-3px_0_var(--color-dusk)] lg:p-12"
             >
-              <span className="flex items-center gap-3 font-display text-xl font-bold text-harbor-mist lg:text-2xl">
-                <SpeakerIcon size={28} />
-                {patientName} hears
-                {lastSpoken ? <span className="font-body text-lg font-normal opacity-80">· {formatTime(lastSpoken.createdAt)}</span> : null}
+              <span className="flex items-center gap-3 font-display text-xl font-bold text-dusk-deep lg:text-2xl">
+                <HorizonMark size={32} />
+                Remi says to {patientName}
+                {lastSpoken ? <span className="font-body text-lg font-normal text-ink-soft">{formatTime(lastSpoken.createdAt)}</span> : null}
               </span>
               {lastSpoken ? (
                 <p
                   key={lastSpoken.id}
-                  className="m-0 animate-arrive font-display text-[clamp(32px,4.4vw,72px)] font-extrabold leading-[1.12] tracking-tight"
+                  className="m-0 animate-arrive text-balance font-display text-[clamp(28px,3.6vw,60px)] font-extrabold leading-[1.12] tracking-tight"
                 >
                   &ldquo;{lastSpoken.text}&rdquo;
                 </p>
               ) : (
-                <p className="m-0 font-display text-[clamp(28px,3.4vw,52px)] font-bold leading-tight opacity-80">
-                  Waiting for the glasses to speak.
+                <p className="m-0 font-display text-[clamp(28px,3.4vw,52px)] font-bold leading-tight text-ink-soft">
+                  Waiting for Remi to speak.
                 </p>
               )}
             </section>
@@ -215,7 +212,7 @@ export function LiveView({ patientName }: { patientName: string }) {
                       {lastPerson?.name ?? lastSeen.personName ?? "Someone enrolled"}
                     </span>
                     {lastPerson?.relationship ? (
-                      <span className="font-display text-2xl font-bold text-harbor-deep lg:text-3xl">
+                      <span className="font-display text-2xl font-bold text-dusk-deep lg:text-3xl">
                         {capitalize(lastPerson.relationship)}
                       </span>
                     ) : null}
@@ -249,7 +246,7 @@ export function LiveView({ patientName }: { patientName: string }) {
               <p className="m-0 px-6 py-5 text-lg text-attention">Could not load the log yet ({loadError}).</p>
             ) : null}
             {events.length === 0 && !loadError ? (
-              <p className="m-0 px-6 py-5 text-lg text-ink-soft">Nothing yet. Everything the glasses see, hear, and say lands here.</p>
+              <p className="m-0 px-6 py-5 text-lg text-ink-soft">Nothing yet. Everything Remi sees, hears, and says lands here.</p>
             ) : null}
             <ol className="m-0 flex min-h-0 flex-1 list-none flex-col overflow-y-auto p-0">
               {events.map((e) => (
@@ -263,7 +260,7 @@ export function LiveView({ patientName }: { patientName: string }) {
                       ) : null}
                     </span>
                     <span
-                      className={`break-words text-lg leading-snug ${e.type === "SPOKEN" ? "font-display font-bold text-harbor-deep" : ""}`}
+                      className={`break-words text-lg leading-snug ${e.type === "SPOKEN" ? "font-display font-bold text-dusk-deep" : ""}`}
                     >
                       {e.type === "SPOKEN" ? <>&ldquo;{e.text}&rdquo;</> : e.text}
                     </span>
@@ -277,7 +274,7 @@ export function LiveView({ patientName }: { patientName: string }) {
       )}
 
       <footer className="flex shrink-0 items-center justify-center gap-2 border-t border-sand bg-surface px-5 py-2.5 text-base text-ink-soft">
-        <ShieldIcon size={16} className="text-harbor" />
+        <ShieldIcon size={16} className="text-dusk" />
         Faces are matched only against people you enroll. Camera frames are never stored.
       </footer>
     </div>

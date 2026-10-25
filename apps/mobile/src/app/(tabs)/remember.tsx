@@ -12,6 +12,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { HorizonMark } from '@/components/brand';
 import { Avatar, Button, EmptyState, Field, Icon, IconButton, Notice, Screen, TextButton } from '@/components/ui';
 import { Colors, Fonts, Gutter, Radii, Shadow, Spacing, Type } from '@/constants/theme';
 import { api, type Person } from '@/lib/api';
@@ -256,7 +257,7 @@ function Intro({
 function Rule({ icon, text }: { icon: React.ComponentProps<typeof Icon>['name']; text: string }) {
   return (
     <View style={styles.rule}>
-      <Icon name={icon} size={18} color={Colors.harborDeep} weight="semibold" />
+      <Icon name={icon} size={18} color={Colors.duskDeep} weight="semibold" />
       <Text style={[Type.secondary, { color: Colors.inkSoft, flex: 1 }]}>{text}</Text>
     </View>
   );
@@ -397,7 +398,7 @@ function Tell({
         <Portrait person={person} photo={null} headers={headers} size="small" />
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={styles.personName}>{person.name}</Text>
-          {person.relationship ? <Text style={[Type.secondary, { color: Colors.harborDeep }]}>Your {person.relationship}</Text> : null}
+          {person.relationship ? <Text style={[Type.secondary, { color: Colors.duskDeep }]}>Your {person.relationship}</Text> : null}
         </View>
       </View>
 
@@ -432,7 +433,7 @@ function Tell({
               <MicButton mode={mode} onPress={toggle} />
             </View>
           )}
-          <Text style={[Type.headline, { color: mode === 'listening' ? Colors.harborDeep : Colors.ink }]} accessibilityLiveRegion="polite">
+          <Text style={[Type.headline, { color: mode === 'listening' ? Colors.duskDeep : Colors.ink }]} accessibilityLiveRegion="polite">
             {hint}
           </Text>
           {mode === 'idle' ? <TextButton title="Type instead" onPress={() => setMode('typing')} /> : null}
@@ -455,7 +456,7 @@ function MicButton({ mode, onPress }: { mode: 'idle' | 'listening' | 'thinking';
       onPress={onPress}
       style={({ pressed }) => [
         styles.mic,
-        { backgroundColor: listening ? Colors.ink : Colors.harbor, opacity: pressed ? 0.85 : mode === 'thinking' ? 0.6 : 1 },
+        { backgroundColor: listening ? Colors.ink : Colors.dusk, opacity: pressed ? 0.85 : mode === 'thinking' ? 0.6 : 1 },
       ]}>
       <Icon name={listening ? 'stop.fill' : mode === 'thinking' ? 'ellipsis' : 'mic.fill'} size={36} color={Colors.surface} weight="bold" />
     </Pressable>
@@ -520,12 +521,12 @@ function Reveal({
         <Text style={styles.revealName} accessibilityRole="header">
           {person.name}
         </Text>
-        {person.relationship ? <Text style={[Type.headline, { color: Colors.harborDeep }]}>Your {person.relationship}</Text> : null}
+        {person.relationship ? <Text style={[Type.headline, { color: Colors.duskDeep }]}>Your {person.relationship}</Text> : null}
       </View>
       <View style={styles.said}>
         <View style={styles.saidHead}>
-          <Icon name="eyeglasses" size={16} color={Colors.harborDeep} weight="semibold" />
-          <Text style={[Type.secondaryBold, { color: Colors.harborDeep }]}>{spoken ? 'The glasses said' : 'The glasses are saying'}</Text>
+          <HorizonMark size={18} state={spoken ? 'idle' : 'listening'} />
+          <Text style={[Type.secondaryBold, { color: Colors.duskDeep }]}>{spoken ? 'Remi said' : 'Remi is saying'}</Text>
         </View>
         <Text style={styles.saidText} accessibilityLiveRegion="polite">
           {line}
@@ -555,7 +556,7 @@ function Done({ tally, total, onAgain, onClose }: { tally: Tally; total: number;
       <View style={styles.tally}>
         <TallyRow icon="heart.fill" tone={Colors.apricotMist} fg={Colors.apricotDeep} label="Knew right away" value={`${tally.knew} of ${total}`} />
         <View style={styles.tallyLine} />
-        <TallyRow icon="eyeglasses" tone={Colors.harborMist} fg={Colors.harborDeep} label="Heard the introduction" value={`${tally.told}`} />
+        <TallyRow icon="eyeglasses" tone={Colors.duskMist} fg={Colors.duskDeep} label="Heard the introduction" value={`${tally.told}`} />
         <View style={styles.tallyLine} />
         <TallyRow icon="quote.bubble.fill" tone={Colors.sand} fg={Colors.ink} label="New memories" value={`${tally.memories}`} />
       </View>
@@ -609,7 +610,7 @@ const styles = StyleSheet.create({
   personRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.four },
   personName: { fontFamily: Fonts.display, fontSize: 22, lineHeight: 28, letterSpacing: -0.3, color: Colors.ink },
   micWrap: { width: 128, height: 128, alignItems: 'center', justifyContent: 'center' },
-  micRing: { position: 'absolute', width: 96, height: 96, borderRadius: 48, backgroundColor: Colors.harbor },
+  micRing: { position: 'absolute', width: 96, height: 96, borderRadius: 48, backgroundColor: Colors.dusk },
   mic: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center', ...Shadow },
 
   quote: { backgroundColor: Colors.surface, borderRadius: Radii.lg, padding: Spacing.six, paddingTop: Spacing.four, gap: 0 },
@@ -617,7 +618,7 @@ const styles = StyleSheet.create({
   quoteText: { ...Type.spoken, color: Colors.ink },
 
   revealName: { fontFamily: Fonts.display, fontSize: 34, lineHeight: 40, letterSpacing: -0.8, color: Colors.ink },
-  said: { backgroundColor: Colors.harborMist, borderRadius: Radii.md, padding: Spacing.five, gap: Spacing.two },
+  said: { backgroundColor: Colors.duskMist, borderRadius: Radii.md, padding: Spacing.five, gap: Spacing.two },
   saidHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   saidText: { ...Type.spoken, fontSize: 22, lineHeight: 29, color: Colors.ink },
 
